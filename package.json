@@ -1,0 +1,17 @@
+{
+  "name": "herdr-browser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Real Chromium browser (Brave by default) with CDP control and Chrome extensions, driven from herdr.",
+  "bin": {
+    "herdr-browser": "bin/herdr-browser.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "test:e2e": "node --test test/integration.test.mjs"
+  }
+}
