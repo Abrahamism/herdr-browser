@@ -15,6 +15,22 @@ un sitio público y sin sesión iniciada.
 
 Capturas: [búsqueda](docs/demo-search.png) · [resultado](docs/demo-result.png)
 
+## Mod de herdr: pestañas del navegador
+
+`mods/browser-tabs` es un mod de herdr-app que lista en un panel las pestañas del navegador
+controlado y te deja activarlas con un clic. No usa `exec`, ni credenciales, ni red fuera de
+`127.0.0.1`.
+
+![Pestañas del navegador](preview.png)
+
+```bash
+cp -r mods/browser-tabs ~/.config/herdr-app/mods/
+herdr-app check ~/.config/herdr-app/mods/browser-tabs
+herdr-app do pane.split --direction right --mod browser-tabs
+```
+
+La receta completa para reconstruirlo desde cero está en `RECIPE.md`.
+
 ## Requisitos
 
 - Node.js 22 o superior.
