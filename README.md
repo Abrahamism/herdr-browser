@@ -91,7 +91,7 @@ Plugin con acción de apertura y panel de pestañas en un pane (`herdr-plugin.to
 controlado y te deja activarlas con un clic. No usa `exec`, ni credenciales, ni red fuera de
 `127.0.0.1`.
 
-<img src="preview.png" alt="Panel de pestañas del navegador" width="420">
+<img src="preview.png" alt="Panel de pestañas del navegador" width="520">
 
 ```bash
 cp -r mods/browser-tabs ~/.config/herdr-app/mods/

@@ -1,0 +1,34 @@
+{
+  "title": "Browser tabs — catalogue card",
+  "brief": "preview.png for the herdr Browser tabs mod in the herdr.dev/mods gallery. Replaces the raw 927x945 panel capture (letterboxed inside the 960x600 card frame) with a composed 1600x1000 card: headline, three proof points, and a mock of the panel over a real Chromium window. Self-contained HTML, system fonts only, rendered with headless Chrome at device scale 2 and downscaled to 1600x1000.",
+  "artboards": [
+    {
+      "file": "01-dark-editorial.html",
+      "title": "Dark editorial",
+      "tradeoff": "Strongest hook and the most depth; the mock is the guest and the headline is the host. Trades realism for pull.",
+      "width": 1600,
+      "height": 1000
+    },
+    {
+      "file": "02-paper-editorial.html",
+      "title": "Paper editorial",
+      "tradeoff": "Reads as print and is the only one that stands out in a dark gallery; feels less like a product shot and more like a poster.",
+      "width": 1600,
+      "height": 1000
+    },
+    {
+      "file": "03-docked-window.html",
+      "title": "Docked window",
+      "tradeoff": "Reads as one Herdr window with the browser inside it, which is not what the mod does: herdr-browser opens Chromium in a window of its own. Kept as the record of that mistake.",
+      "width": 1600,
+      "height": 1000
+    },
+    {
+      "file": "04-two-windows.html",
+      "title": "Two windows",
+      "tradeoff": "Shows the truth: the Chromium window herdr-browser opened, and Herdr with the panel docked next to it. Shipped as preview.png.",
+      "width": 1600,
+      "height": 1000
+    }
+  ]
+}

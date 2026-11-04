@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browser tabs — card direction 02 (paper editorial)</title>
+<style>
+  :root{
+    --paper:#f1ece2; --paper-2:#e9e2d4; --ink:#14110c; --ink-2:#4a4436; --ink-3:#7c7360;
+    --rule:#d6cbb7; --amber:#b0722a; --panel:#101114;
+    --sans:"Segoe UI Variable Display","Segoe UI",Inter,system-ui,-apple-system,sans-serif;
+    --mono:"Cascadia Mono",Consolas,ui-monospace,SFMono-Regular,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1600px;height:1000px;overflow:hidden;background:var(--paper);color:var(--ink);
+    font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  .card{position:relative;width:1600px;height:1000px;overflow:hidden;isolation:isolate;
+    background:
+      radial-gradient(900px 700px at 96% 4%,rgba(255,255,255,.75),transparent 60%),
+      radial-gradient(800px 620px at 2% 98%,rgba(224,213,192,.75),transparent 62%),
+      var(--paper)}
+  .frame{position:absolute;inset:26px;border:1px solid var(--rule);border-radius:14px;pointer-events:none}
+  .grain{position:absolute;inset:0;opacity:.5;
+    background-image:radial-gradient(rgba(20,17,12,.045) 1px,transparent 1px);background-size:3px 3px;
+    -webkit-mask-image:radial-gradient(900px 800px at 50% 50%,#000,transparent 88%);
+    mask-image:radial-gradient(900px 800px at 50% 50%,#000,transparent 88%)}
+
+  /* ---------- copy ---------- */
+  .copy{position:absolute;left:98px;top:186px;width:498px;z-index:5}
+  .eyebrow{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:#8d8168;font-weight:600}
+  h1{font-size:88px;line-height:.98;font-weight:600;letter-spacing:-.042em;margin-top:18px}
+  .alt{font-family:var(--serif);font-weight:400;letter-spacing:-.02em}
+  .sub{margin-top:24px;font-size:19px;line-height:1.6;color:var(--ink-2);max-width:452px}
+  ul{margin-top:34px;list-style:none;display:flex;flex-direction:column;gap:14px}
+  li{display:flex;gap:12px;font-size:16.5px;line-height:1.4;color:#3d3729}
+  li b{color:var(--amber);font-weight:600;font-family:var(--mono);font-size:15px;padding-top:1px}
+  .cmd{margin-top:42px;background:#131109;border:1px solid #2a2419;border-radius:12px;padding:22px 26px;
+    font-family:var(--mono);font-size:14.5px;line-height:1.72;color:#b9b0a0;
+    box-shadow:0 26px 56px rgba(58,44,18,.26)}
+  .cmd b{display:block;font-weight:400}
+  .cmd .dim{color:#7d7466}
+  .cmd .url{color:#e8a552}
+
+  /* ---------- panels ---------- */
+  .browser{position:absolute;left:800px;top:148px;width:726px;border-radius:12px;overflow:hidden;
+    background:#14161b;border:1px solid rgba(20,17,12,.42);
+    box-shadow:0 44px 88px rgba(56,42,16,.30),0 2px 0 rgba(255,255,255,.06) inset}
+  .tabstrip{height:42px;background:#0d0f13;display:flex;align-items:flex-end;gap:2px;padding:0 10px}
+  .tab{height:32px;min-width:184px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:8px 8px 0 0;
+    font-size:12px;color:#8d94a0;white-space:nowrap;overflow:hidden}
+  .tab.on{background:#171a20;color:#eef1f5}
+  .fav{flex:none;width:12px;height:12px;border-radius:3px;background:#2a2f38;display:grid;place-items:center;
+    font:600 7.5px/1 var(--serif);color:#c8ced8}
+  .fav.w{background:#f3f4f6;color:#20242a;border-radius:50%}
+  .toolbar{height:42px;background:#171a20;display:flex;align-items:center;gap:11px;padding:0 13px;
+    border-bottom:1px solid rgba(255,255,255,.06)}
+  .nav{display:flex;gap:11px;color:#4d545f}
+  .nav svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+  .addr{flex:1;height:26px;border-radius:999px;background:#0c0e11;border:1px solid rgba(255,255,255,.08);
+    display:flex;align-items:center;gap:8px;padding:0 13px;font-family:var(--mono);font-size:11px;color:#aab1bc}
+  .addr .path{color:#5f6773}
+  .page{height:396px;background:#fcfcfa;color:#202124;padding:24px 28px 0;position:relative;overflow:hidden}
+  .wp-head{display:flex;align-items:baseline;gap:13px;border-bottom:1px solid #d8d8d3;padding-bottom:11px}
+  .wp-head h2{font-family:var(--serif);font-size:27px;font-weight:400;letter-spacing:-.01em;color:#16181b}
+  .wp-head span{font-size:10.5px;color:#8e8e88}
+  .wp-body{display:flex;gap:24px;padding-top:15px}
+  .wp-text{flex:1;font-size:12px;line-height:1.75;color:#42464c}
+  .wp-text p+p{margin-top:9px}
+  .wp-text .link{color:#3366cc}
+  .wp-text h3{font-family:var(--serif);font-size:15px;font-weight:400;margin:14px 0 5px;color:#1b1e22}
+  .infobox{width:172px;flex:none;border:1px solid #d3d3ce;background:#f7f7f4;font-size:10px;color:#3b3f45}
+  .infobox b{display:block;background:#e9e9e3;padding:5px 7px;font-size:10.5px;font-weight:600;color:#22262b}
+  .infobox div{display:flex;justify-content:space-between;gap:6px;padding:4px 7px;border-top:1px solid #e2e2dc}
+  .infobox div span:first-child{color:#71766f}
+
+  .panel{position:absolute;left:638px;top:502px;width:396px;background:#0f1114;border:1px solid #262a31;
+    border-radius:12px;overflow:hidden;z-index:6;
+    box-shadow:0 44px 84px rgba(44,32,10,.40),0 0 0 1px rgba(255,255,255,.04) inset}
+  .p-mods{height:25px;background:#171a1f;border-bottom:1px solid #23272e;display:flex;align-items:center;
+    padding:0 12px;font-size:9.5px;color:#78808c}
+  .p-head{height:33px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;
+    border-bottom:1px solid #1e2228}
+  .p-head b{font-size:12.5px;font-weight:600;color:#eceff4}
+  .p-head span{display:flex;align-items:center;gap:7px;font-size:10px;color:#6f7783}
+  .p-head svg{width:11px;height:11px;stroke:#6f7783;fill:none;stroke-width:1.8;stroke-linecap:round}
+  .rows{padding:7px 4px}
+  .row{display:flex;gap:10px;padding:8px 10px;border-radius:6px;border-left:2px solid transparent}
+  .row.on{background:rgba(232,145,42,.10);border-left-color:#e8912a}
+  .row i{flex:none;width:15px;font-size:10px;font-style:normal;color:#5f6672;text-align:right;padding-top:1px}
+  .row b{display:block;font-size:12px;font-weight:500;color:#e6e9ee;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis}
+  .row.on b{color:#fff}
+  .row small{display:block;font-size:9.5px;color:#5f6672;margin-top:2px;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis}
+  .p-foot{height:27px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;
+    border-top:1px solid #1e2228;font-size:9.5px;color:#5f6672}
+
+  .meta{position:absolute;left:98px;bottom:64px;z-index:6;display:flex;align-items:center;gap:10px;
+    font-family:var(--mono);font-size:12px;color:#8d8168;letter-spacing:.02em}
+  .meta i{width:22px;height:1px;background:var(--rule);display:block}
+</style>
+</head>
+<body>
+<div class="card" role="img" aria-label="Browser tabs: a Herdr panel listing the tabs of the Chromium browser herdr-browser drives">
+  <div class="grain"></div>
+  <div class="frame"></div>
+
+  <div class="copy">
+    <div class="eyebrow">Herdr mod</div>
+    <h1>Browser<br><span class="alt">tabs</span></h1>
+    <p class="sub">The tabs of the Chromium browser your agent drives, listed in a panel.
+      Click one and it takes the focus, without leaving Herdr.</p>
+    <ul>
+      <li><b>→</b> Live list, refreshed every 3 s</li>
+      <li><b>→</b> Click a row: that tab comes forward</li>
+      <li><b>→</b> 127.0.0.1 only, no credentials, no helper</li>
+    </ul>
+    <div class="cmd">
+      <b><span class="dim">Read</span> ~/.config/herdr-app/AGENTS.md,</b>
+      <b class="dim">then add this mod:</b>
+      <b class="url">herdr.dev/mods/Abrahamism/herdr-browser</b>
+    </div>
+  </div>
+
+  <div class="browser">
+    <div class="tabstrip">
+      <div class="tab"><span class="fav w">W</span>DevTools — Wikipedia</div>
+      <div class="tab on"><span class="fav w">W</span>Chromium (web browser)</div>
+      <div class="tab"><span class="fav">＋</span>New tab</div>
+    </div>
+    <div class="toolbar">
+      <div class="nav">
+        <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>
+      </div>
+      <div class="addr">en.wikipedia.org<span class="path">/wiki/Chromium_(web_browser)</span></div>
+    </div>
+    <div class="page">
+      <div class="wp-head">
+        <h2>Chromium (web browser)</h2>
+        <span>From Wikipedia, the free encyclopedia</span>
+      </div>
+      <div class="wp-body">
+        <div class="wp-text">
+          <p>Chromium is a free and open-source web browser project, mainly developed and maintained
+            by Google. It is the base for browsers such as <span class="link">Brave</span>,
+            <span class="link">Microsoft Edge</span> and <span class="link">Opera</span>.</p>
+          <p>The browser is driven through the Chrome DevTools Protocol: the agent clicks, types and
+            scrolls inside the page, while the pointer you are using stays where it was.</p>
+          <p>Every open tab is a target on that endpoint, which is what this panel reads.</p>
+        </div>
+        <div class="infobox">
+          <b>Chromium</b>
+          <div><span>Developer</span><span>Google</span></div>
+          <div><span>Written in</span><span>C++, Rust</span></div>
+          <div><span>Engine</span><span>Blink, V8</span></div>
+          <div><span>License</span><span>BSD-3</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="p-mods">browser-tabs</div>
+    <div class="p-head">
+      <b>Browser</b>
+      <span>3 tabs
+        <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>
+      </span>
+    </div>
+    <div class="rows">
+      <div class="row"><i>1</i><div><b>DevTools — Wikipedia</b>
+        <small>https://en.wikipedia.org/wiki/DevTools</small></div></div>
+      <div class="row on"><i>2</i><div><b>Chromium (web browser) — Wikipedia</b>
+        <small>https://en.wikipedia.org/wiki/Chromium_(web_browser)</small></div></div>
+      <div class="row"><i>3</i><div><b>New tab</b><small>chrome://newtab/</small></div></div>
+    </div>
+    <div class="p-foot"><span>brave · port 64659</span><span>17:08:39</span></div>
+  </div>
+
+  <div class="meta"><i></i>browser-tabs · read-only · one action</div>
+</div>
+</body>
+</html>

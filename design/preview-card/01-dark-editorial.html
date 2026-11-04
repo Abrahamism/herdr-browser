@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browser tabs — card direction 01 (dark editorial)</title>
+<style>
+  :root{
+    --bg:#0b0c0f; --fg:#f6f7f8; --mute:#99a1ad; --dim:#6b7280;
+    --line:rgba(255,255,255,.09); --amber:#e8912a;
+    --sans:"Segoe UI Variable Display","Segoe UI",Inter,system-ui,-apple-system,sans-serif;
+    --mono:"Cascadia Mono",Consolas,ui-monospace,SFMono-Regular,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1600px;height:1000px;overflow:hidden;background:var(--bg);color:var(--fg);
+    font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  .card{position:relative;width:1600px;height:1000px;overflow:hidden;isolation:isolate}
+
+  /* ---------- ground ---------- */
+  .glow{position:absolute;inset:0}
+  .glow::before{content:"";position:absolute;width:1000px;height:1000px;left:-320px;top:-420px;border-radius:50%;
+    background:radial-gradient(circle,rgba(232,145,42,.22),rgba(232,145,42,0) 66%)}
+  .glow::after{content:"";position:absolute;width:1100px;height:1100px;right:-340px;top:-300px;border-radius:50%;
+    background:radial-gradient(circle,rgba(120,92,255,.22),rgba(120,92,255,0) 68%)}
+  .grid{position:absolute;inset:0;background-image:
+      linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);
+    background-size:64px 64px;
+    -webkit-mask-image:radial-gradient(1150px 780px at 56% 34%,#000 26%,transparent 76%);
+    mask-image:radial-gradient(1150px 780px at 56% 34%,#000 26%,transparent 76%)}
+  .warm{position:absolute;left:-180px;bottom:-300px;width:980px;height:760px;border-radius:50%;
+    background:radial-gradient(circle,rgba(232,145,42,.10),transparent 66%)}
+  .vignette{position:absolute;inset:0;background:radial-gradient(1200px 820px at 50% 42%,transparent 42%,rgba(0,0,0,.55) 100%)}
+
+  /* ---------- left copy ---------- */
+  .copy{position:absolute;left:92px;top:0;height:1000px;width:584px;display:flex;flex-direction:column;
+    justify-content:center;z-index:5}
+  .chips{display:flex;gap:8px;align-items:center;margin-bottom:30px}
+  .chip{height:26px;display:inline-flex;align-items:center;gap:7px;padding:0 12px;border-radius:999px;
+    border:1px solid var(--line);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:#c8cdd6}
+  .chip.dot::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--amber)}
+  h1{font-size:68px;line-height:1.02;font-weight:600;letter-spacing:-.035em}
+  h1 em{font-style:normal;display:block;background:linear-gradient(92deg,#ffd8a1 0%,#e8912a 42%,#a889ff 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{margin-top:26px;font-size:19px;line-height:1.55;color:var(--mute);max-width:550px}
+  ul{margin-top:36px;display:flex;flex-direction:column;gap:15px;list-style:none}
+  li{display:flex;gap:14px;align-items:flex-start;font-size:16px;line-height:1.45;color:#c3c9d2}
+  .tick{flex:none;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+    background:rgba(232,145,42,.12);border:1px solid rgba(232,145,42,.28);margin-top:-2px}
+  .tick svg{width:13px;height:13px;stroke:#f0a94b;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .cmd{margin-top:44px;background:#0d0e11;border:1px solid rgba(255,255,255,.10);border-radius:12px;
+    padding:20px 22px;font-family:var(--mono);font-size:14px;line-height:1.65;color:#b9c0cb;
+    box-shadow:0 20px 50px rgba(0,0,0,.45)}
+  .cmd b{display:block;font-weight:400;color:#e9ecf1}
+  .cmd .url{color:#f0a94b}
+  .cmd .prompt{color:#6b7280}
+
+  /* ---------- right stage ---------- */
+  .stage{position:absolute;left:640px;right:0;top:0;height:1000px;z-index:3}
+
+  .browser{position:absolute;left:44px;top:118px;width:862px;border-radius:14px;overflow:hidden;
+    background:#14161b;border:1px solid rgba(255,255,255,.11);
+    box-shadow:0 50px 110px rgba(0,0,0,.72),0 0 0 1px rgba(255,255,255,.03) inset}
+  .tabstrip{height:44px;background:#0d0f13;display:flex;align-items:flex-end;gap:2px;padding:0 10px 0 14px}
+  .tab{height:34px;min-width:206px;display:flex;align-items:center;gap:9px;padding:0 13px;border-radius:9px 9px 0 0;
+    font-size:12.5px;color:#8d94a0;white-space:nowrap;overflow:hidden}
+  .tab.on{background:#171a20;color:#eef1f5}
+  .fav{flex:none;width:13px;height:13px;border-radius:3px;background:#2a2f38;display:grid;place-items:center;
+    font:600 8px/1 var(--serif);color:#c8ced8}
+  .fav.w{background:#f3f4f6;color:#20242a;border-radius:50%}
+  .tab .x{width:12px;height:12px;color:#5b626d}
+  .newtab{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:#6b7280;margin-bottom:4px}
+
+  .toolbar{height:44px;background:#171a20;display:flex;align-items:center;gap:12px;padding:0 14px;
+    border-bottom:1px solid rgba(255,255,255,.06)}
+  .nav{display:flex;gap:12px;color:#4d545f}
+  .nav svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+  .addr{flex:1;height:28px;border-radius:999px;background:#0c0e11;border:1px solid rgba(255,255,255,.08);
+    display:flex;align-items:center;gap:9px;padding:0 14px;font-family:var(--mono);font-size:11.5px;color:#aab1bc}
+  .addr svg{width:10px;height:10px;stroke:#5f6773;fill:none;stroke-width:2}
+  .addr .path{color:#5f6773}
+
+  /* wikipedia page */
+  .page{height:474px;background:#fcfcfa;color:#202124;padding:26px 30px 0;position:relative}
+  .wp-head{display:flex;align-items:baseline;gap:14px;border-bottom:1px solid #d8d8d3;padding-bottom:12px}
+  .wp-head h2{font-family:var(--serif);font-size:29px;font-weight:400;letter-spacing:-.01em;color:#16181b}
+  .wp-head span{font-size:11px;color:#8e8e88}
+  .wp-body{display:flex;gap:26px;padding-top:16px}
+  .wp-text{flex:1;font-size:12.5px;line-height:1.75;color:#42464c}
+  .wp-text p+p{margin-top:10px}
+  .wp-text .link{color:#3366cc;border-bottom:1px solid rgba(51,102,204,.3)}
+  .wp-text h3{font-family:var(--serif);font-size:15px;font-weight:400;margin:14px 0 5px;color:#1b1e22}
+  .infobox{width:196px;border:1px solid #d3d3ce;background:#f7f7f4;font-size:10.5px;color:#3b3f45}
+  .infobox b{display:block;background:#e9e9e3;padding:6px 8px;font-size:11px;font-weight:600;color:#22262b}
+  .infobox div{display:flex;justify-content:space-between;gap:8px;padding:5px 8px;border-top:1px solid #e2e2dc}
+  .infobox div span:first-child{color:#71766f}
+
+  /* agent cursor on the page */
+  .agent{position:absolute;left:36px;top:322px;display:flex;align-items:center;gap:9px}
+  .ring{width:26px;height:26px;border-radius:50%;border:2px solid #e8912a;
+    box-shadow:0 0 0 6px rgba(232,145,42,.16),0 0 22px rgba(232,145,42,.5);position:relative}
+  .ring::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;border-radius:50%;
+    background:#e8912a;transform:translate(-50%,-50%)}
+  .agent span{font-family:var(--mono);font-size:10.5px;color:#8a5a17;background:#fff3e0;
+    border:1px solid #f2d3a3;border-radius:5px;padding:2px 7px;white-space:nowrap}
+
+  /* herdr panel */
+  .panel{position:absolute;left:176px;top:548px;width:402px;background:#0f1114;border:1px solid #262a31;
+    border-radius:13px;overflow:hidden;z-index:6;
+    box-shadow:0 44px 90px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.04) inset}
+  .p-mods{height:26px;background:#171a1f;border-bottom:1px solid #23272e;display:flex;align-items:center;
+    padding:0 12px;font-size:10px;color:#78808c;letter-spacing:.02em}
+  .p-head{height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;
+    border-bottom:1px solid #1e2228}
+  .p-head b{font-size:12.5px;font-weight:600;color:#eceff4}
+  .p-head span{display:flex;align-items:center;gap:8px;font-size:10.5px;color:#6f7783}
+  .p-head svg{width:12px;height:12px;stroke:#6f7783;fill:none;stroke-width:1.8;stroke-linecap:round}
+  .rows{padding:8px 4px}
+  .row{display:flex;gap:11px;padding:9px 10px;border-radius:7px;border-left:2px solid transparent}
+  .row.on{background:rgba(232,145,42,.10);border-left-color:#e8912a}
+  .row i{flex:none;width:16px;font-size:10.5px;font-style:normal;color:#5f6672;text-align:right;padding-top:1px}
+  .row div{min-width:0}
+  .row b{display:block;font-size:12.5px;font-weight:500;color:#e6e9ee;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis}
+  .row.on b{color:#fff}
+  .row small{display:block;font-size:10px;color:#5f6672;margin-top:2px;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis}
+  .p-foot{height:28px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;
+    border-top:1px solid #1e2228;font-size:10px;color:#5f6672}
+
+  .caption{position:absolute;left:176px;top:846px;z-index:7}
+  .caption b{display:block;font-size:13.5px;font-weight:500;color:#d5dae2;letter-spacing:-.005em}
+  .caption span{font-size:11.5px;color:#6b7280;letter-spacing:.01em;margin-top:4px;display:block}
+</style>
+</head>
+<body>
+<div class="card" role="img" aria-label="Browser tabs: a Herdr panel listing the tabs of the Chromium browser herdr-browser drives">
+  <div class="glow"></div>
+  <div class="grid"></div>
+  <div class="warm"></div>
+  <div class="vignette"></div>
+
+  <div class="copy">
+    <div class="chips">
+      <span class="chip dot">Herdr mod</span>
+      <span class="chip">Chromium · CDP</span>
+    </div>
+    <h1>Your agent browses.<em>Every tab is<br>one click away.</em></h1>
+    <p class="sub">A panel that lists the tabs of the Chromium browser herdr-browser drives, and switches
+      to one when you click it.</p>
+    <ul>
+      <li><span class="tick"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg></span>
+        Live tab list, refreshed every 3 seconds</li>
+      <li><span class="tick"><svg viewBox="0 0 24 24"><path d="M5 3l6 15 2-6 6-2z"/></svg></span>
+        Click a row and that tab takes the focus</li>
+      <li><span class="tick"><svg viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 4-3 7-7 9-4-2-7-5-7-9V7z"/></svg></span>
+        Read-only: 127.0.0.1, no credentials, no helper program</li>
+    </ul>
+    <div class="cmd">
+      <b><span class="prompt">Read</span> ~/.config/herdr-app/AGENTS.md,</b>
+      <b><span class="prompt">then add this mod:</span></b>
+      <b class="url">herdr.dev/mods/Abrahamism/herdr-browser</b>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="browser">
+      <div class="tabstrip">
+        <div class="tab"><span class="fav w">W</span>DevTools — Wikipedia<span class="x">✕</span></div>
+        <div class="tab on"><span class="fav w">W</span>Chromium (web browser) — Wikipedia<span class="x">✕</span></div>
+        <div class="tab"><span class="fav">＋</span>New tab</div>
+        <div class="newtab">＋</div>
+      </div>
+      <div class="toolbar">
+        <div class="nav">
+          <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+          <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+          <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>
+        </div>
+        <div class="addr">
+          <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          en.wikipedia.org<span class="path">/wiki/Chromium_(web_browser)</span>
+        </div>
+      </div>
+      <div class="page">
+        <div class="wp-head">
+          <h2>Chromium (web browser)</h2>
+          <span>From Wikipedia, the free encyclopedia</span>
+        </div>
+        <div class="wp-body">
+          <div class="wp-text">
+            <p>Chromium is a free and open-source web browser project, mainly developed and maintained by
+              Google. It is the base for browsers such as <span class="link">Brave</span>,
+              <span class="link">Microsoft Edge</span> and <span class="link">Opera</span>.</p>
+            <p>The browser is driven through the Chrome DevTools Protocol: the agent clicks, types and
+              scrolls inside the page, while the pointer you are using stays exactly where it was.</p>
+            <p>Every open tab is a target on that endpoint, which is what this panel reads.</p>
+            <h3>Agent control</h3>
+            <p>The browser is driven through the Chrome DevTools Protocol: the agent clicks, types
+              and scrolls inside the page. The panel asks <span class="link">127.0.0.1:64659/json/list</span>
+              for the target list every three seconds, so a tab that opens or closes shows up on its own.</p>
+          </div>
+          <div class="infobox">
+            <b>Chromium</b>
+            <div><span>Developer</span><span>Google</span></div>
+            <div><span>Written in</span><span>C++, Rust</span></div>
+            <div><span>Engine</span><span>Blink, V8</span></div>
+            <div><span>License</span><span>BSD-3</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="p-mods">browser-tabs</div>
+      <div class="p-head">
+        <b>Browser</b>
+        <span>3 tabs
+          <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>
+        </span>
+      </div>
+      <div class="rows">
+        <div class="row"><i>1</i><div><b>DevTools — Wikipedia</b>
+          <small>https://en.wikipedia.org/wiki/DevTools</small></div></div>
+        <div class="row on"><i>2</i><div><b>Chromium (web browser) — Wikipedia</b>
+          <small>https://en.wikipedia.org/wiki/Chromium_(web_browser)</small></div></div>
+        <div class="row"><i>3</i><div><b>New tab</b><small>chrome://newtab/</small></div></div>
+      </div>
+      <div class="p-foot"><span>brave · port 64659</span><span>17:08:39</span></div>
+    </div>
+
+    <div class="caption">
+      <b>Row 2 is a real click</b>
+      <span>the browser switches window, you never leave Herdr</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>
