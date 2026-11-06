@@ -2,12 +2,15 @@
  * Text rendering for agent-facing output. Kept pure so it can be tested without a browser.
  */
 
-export function renderTabs(tabs, { activeId } = {}) {
+export function renderTabs(tabs, { activeId, current } = {}) {
   if (!tabs.length) return 'no tabs'
   return tabs
     .map((tab) => {
-      const marker = tab.id === activeId ? '*' : ' '
-      return `${marker} [${tab.index}] ${tab.title}\n     ${tab.url}\n     ${tab.id}`
+      const isActive = tab.active === undefined ? tab.id === activeId : tab.active
+      const marker = isActive ? '*' : ' '
+      const owner = tab.session ?? null
+      const session = owner === null ? 'unowned' : owner === current ? `${owner} (mine)` : owner
+      return `${marker} [${tab.index}] ${tab.title}\n     ${tab.url}\n     ${tab.id}\n     session: ${session}`
     })
     .join('\n')
 }
@@ -45,7 +48,7 @@ export function renderExtensions(extensions) {
     .join('\n')
 }
 
-export function renderStatus({ state, version, tabs }) {
+export function renderStatus({ state, version, tabs, sessions, session }) {
   if (!state) return 'browser: not running'
   const lines = [
     `browser: ${state.browser}`,
@@ -57,6 +60,10 @@ export function renderStatus({ state, version, tabs }) {
   if (version) {
     lines.push(`version: ${version.Browser ?? version['User-Agent'] ?? 'unknown'}`)
     lines.push(`protocol: ${version['Protocol-Version'] ?? 'unknown'}`)
+  }
+  if (session) lines.push(`session: ${session}`)
+  if (sessions?.length) {
+    lines.push(`sessions: ${sessions.map((entry) => `${entry.session} (${entry.tabs.length})`).join(', ')}`)
   }
   if (tabs) lines.push(`tabs: ${tabs.length}`)
   return lines.join('\n')
