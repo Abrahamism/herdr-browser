@@ -118,5 +118,14 @@ de cliente por invocación y propiedad explícita de pestañas, sin depender de 
 - **L4** (2026-11-06) — `stop` cambia de contrato (S6): con pestañas de otra sesión vivas ya no
   cierra el navegador. Un cliente único no nota la diferencia, porque al cerrar su última pestaña
   no queda nada y el cierre completo se dispara igual.
-- **L5** (2026-11-06) — El issue queda implementado en la rama `fix/session-isolation`; **no** se
-  hizo push, PR ni comentario en el issue: es decisión de Ismael.
+- **L5** (2026-11-06) — Publicado: rama `fix/session-isolation` en `origin` y **PR #2**
+  (https://github.com/Abrahamism/herdr-browser/pull/2) con `Closes #1`; el issue queda abierto hasta el
+  merge. Es el único paso que faltaba.
+- **L6** (2026-11-06) — Al publicar apareció que la historia **local** del repo no comparte raíz con
+  `origin/main`: el import local (`440e448`) es un commit distinto del `Initial commit`
+  remoto (`74398f8`), sin ancestro común. Los árboles sí eran idénticos en código (solo diferían
+  `odd/tasks/herdr-browser.md`, que nunca se publicó, y la ruta de la skill), así que los dos commits
+  se hicieron cherry-pick sobre `origin/main` en una rama nueva con el mismo nombre, resolviendo un
+  conflicto de una línea en `skills/herdr-browser/SKILL.md`. La verificación se repitió sobre esa
+  rama: `npm test` 44 pass / 0 fail / 1 skip y e2e 1 pass. La historia local vieja quedó en la
+  rama `backup/session-isolation`, sin pushear y a la espera de que Ismael decida qué hacer con ella.
