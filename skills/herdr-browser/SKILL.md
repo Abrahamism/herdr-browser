@@ -9,8 +9,7 @@ A real browser in its own window, controlled through CDP. The pointer moves and 
 visibly inside the page, so the user can watch the process. It is not headless unless
 you pass `--headless`.
 
-
-Run every command from the repository root:
+Run every command from the repository root (or use the absolute path to the clone):
 
 ```bash
 cd /path/to/herdr-browser
@@ -20,7 +19,8 @@ node bin/herdr-browser.mjs <command>
 ## The loop
 
 1. **Open or find the tab**
-   - `open <url>` — launches the browser if needed and navigates the current tab.
+   - `open <url>` — launches the browser if needed and navigates the tab your session owns
+     (it allocates one the first time).
    - `tabs` — list open tabs when you are not sure what is loaded.
 2. **Read the page before acting**: `snapshot`
    - Returns `url`, `title` and one line per interactive element: `[e3] button "Sign in"`.
@@ -38,7 +38,24 @@ node bin/herdr-browser.mjs <command>
    - A click that opened a menu or a navigation invalidates the old refs.
 6. **Capture evidence when the user wants to see it**: `shot <file.png>`.
 
-If more than one tab is open, address the right one with `--page <id>`.
+## Sessions (more than one agent)
+
+Every command belongs to a session: `--session <name>` or `HERDR_BROWSER_SESSION`,
+`default` otherwise. Your session owns the tabs it opened, and a command without
+`--page` only ever resolves your own tabs.
+
+- Pass a session name whenever another agent or the user shares the same profile:
+  `--session agent-a`. Without one you are `default` and behave exactly like a single client.
+- `open` reuses your session's tab and allocates one when you have none. `--new` forces a
+  new tab; `--reuse` reuses yours or adopts a tab nobody owns.
+- If your session has no tab, the command fails with an error that names the session and the
+  fix: it says `owns no tabs` and to run `open <url>`, and when every open tab belongs
+  to someone else it adds how to address one with `--page <id>`. Never assume it fell
+  back to the first tab.
+- `tabs --json` reports `session`, `owned` and `active` for every tab, so you can see which
+  one is yours without guessing.
+- `stop` closes only your session's tabs, and the browser only when no tab is left.
+  `stop --all` closes the shared browser: use it when the user asks for it.
 
 ## Rules
 
@@ -59,4 +76,5 @@ If more than one tab is open, address the right one with `--page <id>`.
 - `extensions add <dir>` registers an unpacked extension and loads it if the browser is running.
 - `profile import` copies cookies and extensions from the user's Brave profile; the source
   browser must be closed. Only run it when the user asks.
-- `stop` closes the controlled browser. Do not run it unless the user asks.
+- `stop` closes your session's tabs; `stop --all` closes the shared browser. Do not run
+  either unless the user asks.

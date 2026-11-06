@@ -16,15 +16,30 @@ import {
 import { BROWSER_NAMES, detectBrowsers, resolveBrowser } from './browsers.mjs'
 import { CDP } from './cdp.mjs'
 import { addExtension, extensionPaths, listExtensions, removeExtension } from './extensions.mjs'
-import { loadConfig, profilePaths, readJson, writeJson } from './home.mjs'
+import { loadConfig, profilePaths, readJson } from './home.mjs'
 import { ensureBrowser, probeVersion } from './launch.mjs'
 import { importProfile, profileSummary } from './profile.mjs'
 import { renderExtensions, renderSnapshot, renderStatus, renderTabs } from './render.mjs'
+import {
+  annotateTabs,
+  forgetTab,
+  hasTab,
+  listSessions,
+  ownedTabs,
+  ownersByTarget,
+  readSession,
+  recordTab,
+  removeSession,
+  resolveSession,
+  writeSession
+} from './sessions.mjs'
 import { activateTab, closeTab, listTabs, openTab, resolveTab } from './tabs.mjs'
 
 const BOOLEAN_FLAGS = new Set([
   'json',
   'new',
+  'reuse',
+  'all',
   'no-cursor',
   'force',
   'help',
@@ -69,6 +84,7 @@ export function resolveSettings(flags, env = process.env, plat = process.platfor
     config,
     browser,
     profile: flags.profile ?? config.profile ?? 'default',
+    session: resolveSession(flags, env),
     exe: flags.exe ?? config.exe ?? null,
     cursor: flags['no-cursor'] ? false : config.cursor !== false,
     headless: Boolean(flags.headless),
@@ -113,37 +129,84 @@ async function connectOrLaunch(settings) {
   return { cdp, state: readJson(paths.state, info), paths }
 }
 
-function saveActive(paths, targetId) {
-  const state = readJson(paths.state, {})
-  writeJson(paths.state, { ...state, activeTargetId: targetId })
+/** activeTargetId written by releases before sessions existed. */
+function legacyActiveId(paths) {
+  return readJson(paths.state, {})?.activeTargetId ?? null
 }
 
-async function activeTab(cdp, paths, flags) {
+/** Tabs no session claims: opened by the user, by the mod, or by an older release. */
+function unownedTabs(paths, tabs) {
+  const owners = ownersByTarget(listSessions(paths))
+  return tabs.filter((tab) => !owners.has(tab.id))
+}
+
+/**
+ * The tab a command acts on. An explicitly named `--page` is honoured even across sessions;
+ * without it resolution never leaves the caller's own tabs, and only falls back to a tab
+ * nobody owns when the caller has none. It never silently retargets another client's tab.
+ */
+async function resolveTarget(cdp, paths, flags, session) {
   const tabs = await listTabs(cdp)
   if (flags.page) return resolveTab(tabs, flags.page)
-  const state = readJson(paths.state, {})
-  if (state?.activeTargetId && tabs.some((tab) => tab.id === state.activeTargetId)) {
-    return tabs.find((tab) => tab.id === state.activeTargetId)
+
+  const mine = ownedTabs(session, tabs)
+  if (mine.length) {
+    const active = mine.find((tab) => tab.id === session.activeTargetId)
+    if (active) return active
+    if (mine.length === 1) return mine[0]
+    const list = mine.map((tab) => `${tab.index} (${tab.id.slice(0, 8)})`).join(', ')
+    throw new Error(
+      `session "${session.session}" has ${mine.length} tabs and none is active; pass --page with one of: ${list}`
+    )
   }
-  return resolveTab(tabs)
+
+  const free = unownedTabs(paths, tabs)
+  if (free.length) {
+    const legacy = legacyActiveId(paths)
+    return free.find((tab) => tab.id === legacy) ?? free[0]
+  }
+
+  const held = tabs.length
+    ? `; ${tabs.length} tab${tabs.length === 1 ? ' belongs' : 's belong'} to another session, address one with --page <id>`
+    : ''
+  throw new Error(`session "${session.session}" owns no tabs; run \`herdr-browser open <url>\` first${held}`)
 }
 
 async function pageHandle(cdp, paths, flags) {
-  const tab = await activeTab(cdp, paths, flags)
+  const tab = await resolveTarget(cdp, paths, flags, readSession(paths, flags.__session))
   const sessionId = await preparePage(cdp, tab.id, { cursor: flags.__cursor })
   return { tab, sessionId }
+}
+
+/** Close the shared browser and forget every session: `stop --all`. */
+async function closeBrowserEverywhere(paths) {
+  const state = readJson(paths.state, null)
+  if (state?.port) {
+    try {
+      const cdp = await CDP.connect(state.port)
+      try {
+        await cdp.send('Browser.close', {}, { timeoutMs: 5000 })
+      } finally {
+        cdp.close()
+      }
+    } catch {
+      // Already gone, or it closed the socket before replying.
+    }
+  }
+  rmSync(paths.state, { force: true })
+  for (const session of listSessions(paths)) removeSession(paths, session.session)
 }
 
 const HELP = `herdr-browser — a real Chromium browser (Brave by default) with CDP control and Chrome extensions.
 
 Usage:
   herdr-browser browsers
-  herdr-browser open [url] [--new] [--browser brave|chrome|edge|chromium] [--profile name]
+  herdr-browser open [url] [--new | --reuse] [--browser brave|chrome|edge|chromium] [--profile name]
   herdr-browser tabs [--json]
   herdr-browser activate <id|index>
   herdr-browser close <id|index>
   herdr-browser status [--json]
-  herdr-browser stop
+  herdr-browser stop [--all]
 
 Page control (agent):
   herdr-browser snapshot [--page id] [--json]
@@ -161,9 +224,19 @@ Extensions and profile:
   herdr-browser profile [path]
   herdr-browser profile import [--from brave|chrome|edge|chromium] [--force]
 
+Session:
+  Every invocation belongs to a session: --session <name> or HERDR_BROWSER_SESSION,
+  "default" otherwise. A session owns the tabs it opens, and a command without --page
+  only ever addresses its own tabs: two agents sharing one profile use
+  --session agent-a / --session agent-b and never retarget each other. Tabs nobody
+  claimed (opened by hand or by an older release) are still usable.
+  stop closes only the caller's tabs; --all closes the shared browser.
+
 Global flags:
   --browser <name>   engine to launch (default: brave)
   --profile <name>   dedicated profile (default: default)
+  --session <name>   client identity for tab ownership (default: default)
+  --page <id>        address a tab explicitly, even one another session opened
   --exe <path>       explicit browser executable
   --no-cursor        do not draw the agent cursor inside the page
   --json             machine-readable output where supported
@@ -186,6 +259,7 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
 
   const settings = resolveSettings(flags)
   flags.__cursor = settings.cursor
+  flags.__session = settings.session
 
   try {
     switch (command) {
@@ -203,24 +277,46 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
         const url = positional[0]
         const { cdp, paths } = await connectOrLaunch(settings)
         try {
+          const session = readSession(paths, settings.session)
           const tabs = await listTabs(cdp)
+          const mine = ownedTabs(session, tabs)
           let targetId
-          if (!tabs.length || flags.new || !url) {
-            targetId = tabs.length && !flags.new ? tabs[0].id : await openTab(cdp, 'about:blank')
+          if (flags.new) {
+            targetId = await openTab(cdp, 'about:blank')
+          } else if (mine.length) {
+            // Reuse this session's own tab. Never another client's.
+            const active = mine.find((tab) => tab.id === session.activeTargetId)
+            targetId = (active ?? mine[0]).id
+          } else if (flags.reuse) {
+            const legacy = legacyActiveId(paths)
+            const free = unownedTabs(paths, tabs)
+            const chosen = free.find((tab) => tab.id === legacy) ?? free[0]
+            if (!chosen) {
+              throw new Error(`session "${session.session}" has no tab to reuse; drop --reuse to open a new one`)
+            }
+            targetId = chosen.id
           } else {
-            targetId = tabs[0].id
+            targetId = await openTab(cdp, 'about:blank')
           }
           const sessionId = await preparePage(cdp, targetId, { cursor: settings.cursor })
           if (url) await navigate(cdp, sessionId, url)
           await activateTab(cdp, targetId)
-          saveActive(paths, targetId)
           const [tab] = (await listTabs(cdp)).filter((item) => item.id === targetId)
+          writeSession(paths, recordTab(session, targetId, { title: tab?.title, url: tab?.url }))
           if (flags.json) {
-            write(JSON.stringify({ id: targetId, url: tab?.url ?? url ?? 'about:blank', title: tab?.title }))
+            write(
+              JSON.stringify({
+                id: targetId,
+                url: tab?.url ?? url ?? 'about:blank',
+                title: tab?.title,
+                session: session.session
+              })
+            )
           } else {
             write(`open: ${tab?.title ?? ''}`)
             write(`url:  ${tab?.url ?? url ?? 'about:blank'}`)
             write(`tab:  ${targetId}`)
+            write(`session: ${session.session}`)
           }
         } finally {
           cdp.close()
@@ -233,10 +329,10 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
         if (!connection) throw new Error('browser is not running; run `herdr-browser open <url>` first')
         const { cdp, paths } = connection
         try {
-          const tabs = await listTabs(cdp)
-          const state = readJson(paths.state, {})
+          const sessions = listSessions(paths)
+          const tabs = annotateTabs(await listTabs(cdp), { current: settings.session, sessions })
           if (flags.json) write(JSON.stringify(tabs, null, 2))
-          else write(renderTabs(tabs, { activeId: state.activeTargetId }))
+          else write(renderTabs(tabs, { current: settings.session }))
         } finally {
           cdp.close()
         }
@@ -252,8 +348,12 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
         try {
           const tab = resolveTab(await listTabs(cdp), selector)
           await activateTab(cdp, tab.id)
-          saveActive(paths, tab.id)
+          const owner = ownersByTarget(listSessions(paths)).get(tab.id)
+          if (!owner || owner === settings.session) {
+            writeSession(paths, recordTab(readSession(paths, settings.session), tab.id, { title: tab.title, url: tab.url }))
+          }
           write(`activated: ${tab.title}\n${tab.url}`)
+          if (owner && owner !== settings.session) write(`session: ${owner}`)
         } finally {
           cdp.close()
         }
@@ -269,8 +369,8 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
         try {
           const tab = resolveTab(await listTabs(cdp), selector)
           await closeTab(cdp, tab.id)
-          const state = readJson(paths.state, {})
-          if (state.activeTargetId === tab.id) saveActive(paths, '')
+          const session = readSession(paths, settings.session)
+          if (hasTab(session, tab.id)) writeSession(paths, forgetTab(session, tab.id))
           write(`closed: ${tab.title}`)
         } finally {
           cdp.close()
@@ -292,9 +392,15 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
         }
         const cdp = await CDP.connect(state.port)
         try {
-          const tabs = await listTabs(cdp)
-          if (flags.json) write(JSON.stringify({ running: true, version, state, tabs }, null, 2))
-          else write(renderStatus({ state, version, tabs }))
+          const sessions = listSessions(paths)
+          const tabs = annotateTabs(await listTabs(cdp), { current: settings.session, sessions })
+          if (flags.json) {
+            write(
+              JSON.stringify({ running: true, version, state, session: settings.session, sessions, tabs }, null, 2)
+            )
+          } else {
+            write(renderStatus({ state, version, tabs, sessions, session: settings.session }))
+          }
         } finally {
           cdp.close()
         }
@@ -302,18 +408,50 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
       }
 
       case 'stop': {
-        const connection = await connectExisting(settings)
         const paths = pathsFor(settings)
-        if (connection) {
-          try {
-            await connection.cdp.send('Browser.close', {}, { timeoutMs: 5000 })
-          } catch {
-            // The browser may close the socket before replying.
-          }
-          connection.cdp.close()
+        const name = settings.session
+        if (flags.all) {
+          await closeBrowserEverywhere(paths)
+          write('browser: stopped')
+          return 0
         }
-        rmSync(paths.state, { force: true })
-        write('browser: stopped')
+
+        const connection = await connectExisting(settings)
+        if (!connection) {
+          removeSession(paths, name)
+          write(`session: ${name} stopped`)
+          write('closed: 0 tabs')
+          write('browser: not running')
+          return 0
+        }
+
+        const { cdp } = connection
+        let closed = 0
+        let remaining = []
+        try {
+          for (const tab of ownedTabs(readSession(paths, name), await listTabs(cdp))) {
+            await closeTab(cdp, tab.id)
+            closed += 1
+          }
+          try {
+            remaining = await listTabs(cdp)
+          } catch {
+            // The browser went away with its last page.
+            remaining = []
+          }
+          removeSession(paths, name)
+          if (!remaining.length) {
+            // Nothing is open in this profile any more: the pre-session contract applies.
+            await closeBrowserEverywhere(paths)
+            write('browser: stopped')
+            return 0
+          }
+        } finally {
+          cdp.close()
+        }
+        write(`session: ${name} stopped`)
+        write(`closed: ${closed} tab${closed === 1 ? '' : 's'}`)
+        write(`browser: running (${remaining.length} tab${remaining.length === 1 ? '' : 's'} left)`)
         return 0
       }
 
