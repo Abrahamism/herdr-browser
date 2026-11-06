@@ -53,7 +53,40 @@ herdr-browser shot captura.png
 herdr-browser stop
 ```
 
-Banderas globales: `--browser`, `--profile`, `--exe`, `--no-cursor`, `--json`, `--headless`.
+Banderas globales: `--browser`, `--profile`, `--session`, `--exe`, `--no-cursor`, `--json`, `--headless`.
+
+## Varios agentes a la vez
+
+Un mismo perfil puede alimentar a dos agentes sin que se pisen. Cada invocación pertenece a una
+sesión: `--session <nombre>` o la variable `HERDR_BROWSER_SESSION`; si no decís nada, es `default`.
+
+```bash
+herdr-browser open https://example.com/a --session agent-a
+herdr-browser open https://example.com/b --session agent-b
+herdr-browser tabs --session agent-a
+herdr-browser snapshot --session agent-b
+```
+
+- Una sesión es dueña de las pestañas que abre, anotadas en `<perfil>/sessions/<sesión>.json`, al
+  lado de `state.json`. Cada archivo lo escribe solo su sesión, así que dos clientes no se pisan
+  el estado.
+- Un comando sin `--page` resuelve únicamente pestañas propias. Si la sesión no tiene ninguna, usa
+  una pestaña sin dueño (abierta a mano o por una versión anterior); si todas tienen dueño, falla
+  con un mensaje que nombra la sesión y dice qué correr (`session "agent-a" owns no tabs...`) en
+  vez de caer a la primera pestaña.
+- `open` reusa la pestaña de esa sesión y crea una nueva cuando no tiene ninguna. `--new` fuerza
+  pestaña nueva y `--reuse` reusa la propia o adopta una sin dueño.
+- `--page <id>` es explícito y cruza sesiones: sirve para tocar una pestaña ajena a propósito.
+- `tabs --json` agrega a cada pestaña `session` (dueño, o `null` si no tiene), `owned` y `active`.
+- `stop` cierra solo las pestañas de la sesión y deja el navegador vivo si otro cliente sigue
+  trabajando; cuando no queda ninguna pestaña en el perfil, cierra el navegador como siempre.
+  `stop --all` cierra el navegador compartido.
+
+Dos procesos con el mismo nombre de sesión son, a propósito, un solo cliente: comparten pestaña
+activa y no coordinan escrituras entre sí. Un agente, una sesión.
+
+Si querés aislamiento total, cookies incluidas, cada agente con su propio perfil:
+`--profile agent-a` (y `--session` ya no hace falta).
 
 ## Control por el agente
 
