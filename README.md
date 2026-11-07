@@ -111,6 +111,23 @@ agente adivine: no hay tarjeta ni extensión, es el mismo proceso esperando.
 
 Los tiempos aceptan `500` (milisegundos), `30s` o `5m`.
 
+### Retos anti-bot
+
+Después de cada navegación, `open` revisa si lo que cargó es un reto (Cloudflare, Akamai,
+DataDome, PerimeterX, Imperva, AWS WAF) o una página con un CAPTCHA montado, y espera a que el
+navegador lo resuelva solo:
+
+```bash
+herdr-browser open https://sitio-protegido.example --challenge-wait 30s
+```
+
+La detección exige **dos señales** (título y texto) en los intersticiales duros, para no confundir
+una nota sobre Cloudflare con un bloqueo; un widget de CAPTCHA se detecta por su marca en el DOM y
+basta con uno. Nunca se resuelve nada: si el reto sobrevive al plazo, `open` imprime
+`challenge: cloudflare — still there after 15s; run \`herdr-browser handoff\`` y el agente sabe que no
+está viendo la página que pidió. `--challenge-wait 0` reporta sin esperar y
+`HERDR_BROWSER_CHALLENGE_WAIT_MS` fija el valor por defecto.
+
 ## Extensiones
 
 Solo extensiones desempaquetadas (directorios con `manifest.json`):

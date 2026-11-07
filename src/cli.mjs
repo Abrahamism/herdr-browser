@@ -93,6 +93,11 @@ export function resolveSettings(flags, env = process.env, plat = process.platfor
     session: resolveSession(flags, env),
     exe: flags.exe ?? config.exe ?? null,
     cursor: flags['no-cursor'] ? false : config.cursor !== false,
+    // A challenge the browser clears by itself costs time, not permission: wait by default.
+    challengeWait: parseDuration(
+      flags['challenge-wait'] ?? env.HERDR_BROWSER_CHALLENGE_WAIT_MS,
+      15_000
+    ),
     headless: Boolean(flags.headless),
     env,
     plat
@@ -227,6 +232,12 @@ Page control (agent):
   herdr-browser wait --for <selector|text|url>=<value> [--timeout <ms|s|m>] [--page id] [--json]
   herdr-browser handoff [--message <text>] [--for <condition>] [--timeout <ms|s|m>] [--json]
 
+Challenges:
+  After a navigation, open reports Cloudflare, Akamai, DataDome, PerimeterX, Imperva,
+  AWS WAF and CAPTCHA interstitials, and waits --challenge-wait (15s by default,
+  HERDR_BROWSER_CHALLENGE_WAIT_MS) for the browser to clear them. It never solves one:
+  a surviving challenge is reported and left to a person.
+
 Waiting and handoff:
   wait polls the page and prints "wait: ok after <ms>" when the condition holds; a
   selector only counts when the element is rendered. A timeout exits with code 1, so a
@@ -255,6 +266,7 @@ Global flags:
   --page <id>        address a tab explicitly, even one another session opened
   --exe <path>       explicit browser executable
   --no-cursor        do not draw the agent cursor inside the page
+  --challenge-wait <ms|s|m>  how long to wait out a bot challenge after navigating (default: 15s)
   --json             machine-readable output where supported
   --headless         launch headless (useful for tests)
 `
@@ -316,17 +328,29 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
             targetId = await openTab(cdp, 'about:blank')
           }
           const sessionId = await preparePage(cdp, targetId, { cursor: settings.cursor })
-          if (url) await navigate(cdp, sessionId, url)
+          let navigation = { challenge: null, cleared: false, waitedMs: 0 }
+          if (url) {
+            navigation = await navigate(cdp, sessionId, url, { challengeWaitMs: settings.challengeWait })
+          }
           await activateTab(cdp, targetId)
           const [tab] = (await listTabs(cdp)).filter((item) => item.id === targetId)
           writeSession(paths, recordTab(session, targetId, { title: tab?.title, url: tab?.url }))
+          const challenge = navigation.challenge
+            ? {
+                kind: navigation.challenge.kind,
+                signal: navigation.challenge.signal,
+                cleared: navigation.cleared,
+                waitedMs: navigation.waitedMs
+              }
+            : null
           if (flags.json) {
             write(
               JSON.stringify({
                 id: targetId,
                 url: tab?.url ?? url ?? 'about:blank',
                 title: tab?.title,
-                session: session.session
+                session: session.session,
+                challenge
               })
             )
           } else {
@@ -334,6 +358,14 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
             write(`url:  ${tab?.url ?? url ?? 'about:blank'}`)
             write(`tab:  ${targetId}`)
             write(`session: ${session.session}`)
+            if (challenge) {
+              const state = navigation.cleared
+                ? `cleared after ${navigation.waitedMs}ms`
+                : navigation.waitedMs === 0
+                  ? 'reported without waiting'
+                  : `still there after ${navigation.waitedMs}ms; run \`herdr-browser handoff\` or solve it by hand`
+              write(`challenge: ${challenge.kind} (${challenge.signal}) — ${state}`)
+            }
           }
         } finally {
           cdp.close()

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { waitOutChallenge } from './challenge.mjs'
 import { CURSOR_SCRIPT, fillScript, resolveRefScript, snapshotScript } from './inject.mjs'
 
 const MODIFIERS = { Alt: 1, Control: 2, Meta: 4, Shift: 8 }
@@ -196,10 +197,20 @@ export async function preparePage(cdp, targetId, { cursor = true } = {}) {
   return sessionId
 }
 
-export async function navigate(cdp, sessionId, url) {
+/**
+ * Navigate and report whether what loaded is actually the page: a bot challenge is an
+ * outcome the caller must see, not a page it should reason about.
+ * `challengeWaitMs` of null disables detection entirely (used by tests and by `--challenge-wait 0`).
+ */
+export async function navigate(cdp, sessionId, url, { challengeWaitMs = null } = {}) {
   const { errorText } = await cdp.send('Page.navigate', { url }, { sessionId, timeoutMs: 45_000 })
   if (errorText) throw new Error(`navigation failed: ${errorText}`)
   await waitForLoad(cdp, sessionId)
+  if (challengeWaitMs === null) return { challenge: null, cleared: false, waitedMs: 0 }
+  return waitOutChallenge({
+    waitMs: challengeWaitMs,
+    evaluate: (expression) => evaluate(cdp, sessionId, expression, { timeoutMs: 15_000 })
+  })
 }
 
 async function waitForLoad(cdp, sessionId, { timeoutMs = 20_000 } = {}) {

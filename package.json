@@ -1,6 +1,6 @@
 {
   "name": "herdr-browser",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "description": "Real Chromium browser (Brave by default) with CDP control and Chrome extensions, driven from herdr.",

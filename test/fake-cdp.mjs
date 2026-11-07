@@ -174,7 +174,11 @@ function handleMsg(msg, socket, state) {
       break
     case 'Runtime.evaluate': {
       const expr = params?.expression ?? ''
-      if (expr.includes('__hbWait')) {
+      if (expr.includes('__hbChallenge')) {
+        state.challengeCalls = (state.challengeCalls ?? 0) + 1
+        const answer = state.challengeResult ?? { title: 'Fake', text: '', markers: {} }
+        result = { result: { value: { url: 'http://fake/', ...answer } } }
+      } else if (expr.includes('__hbWait')) {
         state.waitCalls = (state.waitCalls ?? 0) + 1
         const answer = state.waitResult ?? { ok: true, detail: 'the condition holds' }
         result = { result: { value: { url: 'http://fake/', title: 'Fake', ...answer } } }

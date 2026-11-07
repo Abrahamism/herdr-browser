@@ -4,7 +4,7 @@ feature: browse-parity
 estatus: en-progreso
 fecha_creacion: 2026-11-06
 actualizado: 2026-11-06
-siguiente: T2 — retos anti-bot
+siguiente: T3 — stealth
 modo: implementacion
 tags: [herdr-browser, cdp, cli, seguridad, stealth, paridad]
 ---
@@ -59,7 +59,7 @@ tiene sentido con su arquitectura de extensión + relay. Una por una, un commit 
 ## Tasks
 
 - [x] **T1** — `wait` y `handoff` (`src/wait.mjs`, CLI, tests). Version 1.0.1. Spec: S1, I1, I2.
-- [ ] **T2** — Detección de retos (`src/challenge.mjs`, `navigate`, `--challenge-wait`). Version 1.0.2. Spec: S2, I3.
+- [x] **T2** — Detección de retos (`src/challenge.mjs`, `navigate`, `--challenge-wait`). Version 1.0.2. Spec: S2, I3.
 - [ ] **T3** — Stealth: sin `Runtime.enable`, refs por índice, cursor en shadow root cerrado, switch de launch. Version 1.0.3. Spec: S3, I4.
 - [ ] **T4** — Allowlist por sesión (`src/origins.mjs`, `allow`, guardia de navegación). Version 1.0.4. Spec: S4, I5.
 - [ ] **T5** — Captura de red a HAR con redacción (`src/har.mjs`, comando `network`). Version 1.0.5. Spec: S5, I6.
