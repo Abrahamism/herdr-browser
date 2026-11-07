@@ -92,6 +92,8 @@ Si querés aislamiento total, cookies incluidas, cada agente con su propio perfi
 
 El agente usa `snapshot` para obtener refs (`e1`, `e2`…) y luego `click`, `fill`, `type`, `key`, `scroll`, `get`, `eval` y `shot`. Se dibuja un cursor dentro de la página para que el usuario vea dónde actúa.
 
+Los refs no se guardan como atributos en el DOM: `e5` significa "el quinto elemento del mismo recorrido de `snapshot`, con el mismo filtro de visibilidad". Se recalculan al resolver, así que sobreviven entre invocaciones del CLI (incluso en procesos distintos) sin tocar la página.
+
 ### Esperar y ceder el control a la persona
 
 ```bash
@@ -179,6 +181,7 @@ La receta completa para reconstruirlo desde cero está en `RECIPE.md`.
 - Los iframes out-of-process se leen y se clican: sus refs llevan prefijo (`f1e12`). `eval` y `get` siguen operando sobre el documento principal.
 - Sin input del sistema operativo (todo por CDP).
 - El puntero físico no se mueve.
+- Si el DOM cambia entre `snapshot` y `click`/`fill`, un ref puede apuntar a otro elemento: volvé a correr `snapshot` antes de actuar.
 
 ## Verificación
 

@@ -66,25 +66,7 @@ async function evaluate(cdp, sessionId, expression, { awaitPromise = false, time
   return response.result?.value
 }
 
-/** Default execution contexts for a session, keyed by frame id. */
-async function sessionContexts(cdp, sessionId) {
-  const defaults = new Map()
-  const stop = cdp.on(
-    'Runtime.executionContextCreated',
-    (params) => {
-      const context = params.context
-      if (context?.auxData?.isDefault) defaults.set(context.auxData.frameId, context.id)
-    },
-    { sessionId }
-  )
-  await cdp.send('Runtime.enable', {}, { sessionId })
-  await sleep(60)
-  stop()
-  return defaults
-}
-
-async function contextFor(cdp, sessionId, frameId, defaults, worldName) {
-  if (defaults.get(frameId) !== undefined) return defaults.get(frameId)
+async function contextFor(cdp, sessionId, frameId, worldName) {
   const { executionContextId } = await cdp.send(
     'Page.createIsolatedWorld',
     { frameId, worldName },
@@ -101,12 +83,11 @@ async function contextFor(cdp, sessionId, frameId, defaults, worldName) {
  */
 export async function frameContexts(cdp, pageSessionId, pageTargetId) {
   await cdp.send('Page.enable', {}, { sessionId: pageSessionId })
-  const mainDefaults = await sessionContexts(cdp, pageSessionId)
   const { frameTree } = await cdp.send('Page.getFrameTree', {}, { sessionId: pageSessionId })
 
   const entries = []
   const walk = (node) => {
-    entries.push({ frame: node.frame, sessionId: pageSessionId, defaults: mainDefaults })
+    entries.push({ frame: node.frame, sessionId: pageSessionId })
     for (const child of node.childFrames ?? []) walk(child)
   }
   if (frameTree) walk(frameTree)
@@ -117,9 +98,8 @@ export async function frameContexts(cdp, pageSessionId, pageTargetId) {
     try {
       const sessionId = await cdp.attach(target.targetId)
       await cdp.send('Page.enable', {}, { sessionId })
-      const defaults = await sessionContexts(cdp, sessionId)
       const tree = await cdp.send('Page.getFrameTree', {}, { sessionId })
-      if (tree.frameTree) entries.push({ frame: tree.frameTree.frame, sessionId, defaults })
+      if (tree.frameTree) entries.push({ frame: tree.frameTree.frame, sessionId })
     } catch {
       // A frame target that disappeared between listing and attaching is skipped.
     }
@@ -128,7 +108,7 @@ export async function frameContexts(cdp, pageSessionId, pageTargetId) {
   const contexts = []
   for (const [index, entry] of entries.entries()) {
     try {
-      const contextId = await contextFor(cdp, entry.sessionId, entry.frame.id, entry.defaults, `herdr-browser-${index}`)
+      const contextId = await contextFor(cdp, entry.sessionId, entry.frame.id, `herdr-browser-${index}`)
       contexts.push({ index, frame: entry.frame, sessionId: entry.sessionId, contextId })
     } catch {
       if (index === 0) throw new Error('cannot open an execution context for the main frame')
@@ -163,7 +143,7 @@ async function moveCursor(cdp, pageSessionId, to, { steps = 12, durationMs = 300
     (await evaluate(
       cdp,
       pageSessionId,
-      'window.__hbPos || { x: innerWidth / 2, y: innerHeight / 2 }'
+      '(() => { const h = document.querySelector("[data-hb-c]"); return h && h.pos ? h.pos : { x: innerWidth / 2, y: innerHeight / 2 }; })()'
     )) ?? { x: to.x, y: to.y }
   for (const point of moveSteps(from, to, steps)) {
     await cdp.send(
@@ -173,7 +153,7 @@ async function moveCursor(cdp, pageSessionId, to, { steps = 12, durationMs = 300
     )
     // Paint in the top document too: events over an iframe never reach its listeners.
     try {
-      await evaluate(cdp, pageSessionId, `window.__hbPaint && window.__hbPaint(${point.x}, ${point.y})`)
+      await evaluate(cdp, pageSessionId, `(() => { const h = document.querySelector("[data-hb-c]"); if (h && h.paint) h.paint(${point.x}, ${point.y}); })()`)
     } catch {
       // The page may be navigating; the next move repaints.
     }
@@ -187,7 +167,6 @@ export async function preparePage(cdp, targetId, { cursor = true } = {}) {
   cdp.prepared ??= new Set()
   if (!cdp.prepared.has(sessionId)) {
     await cdp.send('Page.enable', {}, { sessionId })
-    await cdp.send('Runtime.enable', {}, { sessionId })
     if (cursor) {
       await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: CURSOR_SCRIPT }, { sessionId })
     }

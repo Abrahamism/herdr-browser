@@ -182,11 +182,11 @@ function handleMsg(msg, socket, state) {
         state.waitCalls = (state.waitCalls ?? 0) + 1
         const answer = state.waitResult ?? { ok: true, detail: 'the condition holds' }
         result = { result: { value: { url: 'http://fake/', title: 'Fake', ...answer } } }
-      } else if (expr.includes('__hbPos')) {
+      } else if (expr.includes('data-hb-c')) {
         result = { result: { value: { x: 0, y: 0 } } }
       } else if (expr.includes('rect.left + rect.width / 2')) {
         result = { result: { value: { ok: true, x: 10, y: 20 } } }
-      } else if (expr.includes('MAX_ITEMS') || expr.includes('data-herdr-browser-ref')) {
+      } else if (expr.includes('MAX_ITEMS')) {
         result = { result: { value: { title: 'Fake', url: 'http://fake/', items: [{ ref: 'e1', role: 'button', name: 'Go' }] } } }
       } else if (expr.includes('document.readyState')) {
         result = { result: { value: 'complete' } }

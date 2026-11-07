@@ -3,43 +3,47 @@
  * not in Node, so they must not reference anything from this module.
  */
 
+/**
+ * The agent cursor: a closed shadow root on an anonymous host, marked with a short
+ * attribute so the next invocation can paint it. Nothing on `window`, nothing readable
+ * through the page's own tree - `closed` means even `shadowRoot` returns null.
+ */
 export const CURSOR_SCRIPT = `
 (() => {
-  if ((window.__herdrBrowserCursorVersion || 0) >= 2) return 'already';
-  window.__herdrBrowserCursorVersion = 2;
-  document.querySelectorAll('[data-herdr-browser-cursor]').forEach((element) => element.remove());
-  const NS = 'http://www.w3.org/1999/xhtml';
-  const point = document.createElementNS(NS, 'div');
-  point.setAttribute('data-herdr-browser-cursor', '1');
+  if (document.querySelector('[data-hb-c]')) return 'already';
+  const host = document.createElement('div');
+  host.setAttribute('data-hb-c', '');
+  const shadow = host.attachShadow({ mode: 'closed' });
+  const point = document.createElement('div');
   point.style.cssText = [
     'position:fixed', 'left:0', 'top:0', 'width:22px', 'height:22px',
     'margin:-2px 0 0 -2px', 'pointer-events:none', 'z-index:2147483647',
     'filter:drop-shadow(0 1px 2px rgba(0,0,0,.65))', 'transform-origin:2px 2px'
   ].join(';');
   point.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 2 L4 20 L9.2 15.2 L12.2 22 L15.4 20.4 L12.4 13.9 L19 13.6 Z" fill="#ff2d55" stroke="#ffffff" stroke-width="1.3" stroke-linejoin="round"/></svg>';
-  const attach = () => document.documentElement && document.documentElement.appendChild(point);
-  if (document.documentElement) attach();
-  else document.addEventListener('DOMContentLoaded', attach, { once: true });
+  shadow.appendChild(point);
   const pos = { x: Math.round(innerWidth / 2), y: Math.round(innerHeight / 2) };
-  window.__hbPos = pos;
+  host.pos = pos;
   const paint = () => {
     point.style.left = pos.x + 'px';
     point.style.top = pos.y + 'px';
   };
-  window.__hbPaint = (x, y) => {
+  host.paint = (x, y) => {
     pos.x = x;
     pos.y = y;
     paint();
   };
   paint();
+  const attach = () => document.documentElement && document.documentElement.appendChild(host);
+  if (document.documentElement) attach();
+  else document.addEventListener('DOMContentLoaded', attach, { once: true });
   addEventListener('mousemove', (event) => {
     pos.x = event.clientX;
     pos.y = event.clientY;
     paint();
   }, true);
   addEventListener('mousedown', (event) => {
-    const ring = document.createElementNS(NS, 'div');
-    ring.setAttribute('data-herdr-browser-ripple', '1');
+    const ring = document.createElement('div');
     ring.style.cssText = [
       'position:fixed',
       'left:' + event.clientX + 'px',
@@ -48,7 +52,7 @@ export const CURSOR_SCRIPT = `
       'border:2px solid #ff2d55', 'border-radius:50%',
       'pointer-events:none', 'z-index:2147483646'
     ].join(';');
-    (document.documentElement || document.body).appendChild(ring);
+    shadow.appendChild(ring);
     const animation = ring.animate(
       [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(6)', opacity: 0 }],
       { duration: 360, easing: 'ease-out' }
@@ -59,7 +63,12 @@ export const CURSOR_SCRIPT = `
 })()
 `
 
-const SNAPSHOT_BODY = `
+/**
+ * The element scan, defined ONCE. A ref is a position in this exact list, so the snapshot
+ * that printed `e5` and the command that clicks it can never disagree about which element
+ * that is - the failure mode of an index scheme is two copies drifting apart.
+ */
+const SCAN_PRELUDE = `
   const SELECTOR = [
     'a[href]', 'button', 'input:not([type="hidden"])', 'select', 'textarea', 'summary',
     '[role="button"]', '[role="link"]', '[role="textbox"]', '[role="checkbox"]',
@@ -67,7 +76,6 @@ const SNAPSHOT_BODY = `
     '[contenteditable=""]', '[contenteditable="true"]', '[onclick]'
   ].join(',');
   const MAX_ITEMS = 500;
-  const clean = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
   const visible = (element) => {
     const rect = element.getBoundingClientRect();
     if (rect.width < 2 || rect.height < 2) return false;
@@ -75,17 +83,16 @@ const SNAPSHOT_BODY = `
     const style = getComputedStyle(element);
     return style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
   };
-  document.querySelectorAll('[data-herdr-browser-ref]').forEach((element) => {
-    element.removeAttribute('data-herdr-browser-ref');
-  });
+  // DOM order, visible only, capped: the ref table.
+  const scan = () => Array.from(document.querySelectorAll(SELECTOR)).filter(visible).slice(0, MAX_ITEMS);
+`
+
+export function snapshotScript() {
+  return `(() => {${SCAN_PRELUDE}
+  const clean = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
   const items = [];
-  let counter = 0;
-  for (const element of document.querySelectorAll(SELECTOR)) {
-    if (items.length >= MAX_ITEMS) break;
-    if (!visible(element)) continue;
+  for (const [index, element] of scan().entries()) {
     const tag = element.tagName.toLowerCase();
-    const ref = 'e' + (++counter);
-    element.setAttribute('data-herdr-browser-ref', ref);
     const role = element.getAttribute('role') || tag;
     const type = element.getAttribute('type') || undefined;
     const name = clean(
@@ -96,7 +103,7 @@ const SNAPSHOT_BODY = `
       element.getAttribute('title') ||
       element.getAttribute('alt')
     ).slice(0, 120);
-    const item = { ref, role, name };
+    const item = { ref: 'e' + (index + 1), role, name };
     if (type) item.type = type;
     if (tag === 'a') item.url = element.getAttribute('href');
     if (tag === 'input' || tag === 'textarea' || tag === 'select') {
@@ -107,16 +114,14 @@ const SNAPSHOT_BODY = `
     items.push(item);
   }
   return { title: document.title, url: location.href, items };
-`
-
-export function snapshotScript() {
-  return `(() => {${SNAPSHOT_BODY}})()`
+})()`
 }
 
 export function resolveRefScript(ref) {
   return `
-(() => {
-  const element = document.querySelector('[data-herdr-browser-ref="${ref}"]');
+(() => {${SCAN_PRELUDE}
+  const index = parseInt(String('${ref}').replace(/^e/, ''), 10) - 1;
+  const element = scan()[index];
   if (!element) return { ok: false, error: 'ref ${ref} not found; run snapshot again' };
   element.scrollIntoView({ block: 'center', inline: 'center' });
   const rect = element.getBoundingClientRect();
@@ -128,8 +133,9 @@ export function resolveRefScript(ref) {
 
 export function fillScript(ref, text) {
   return `
-(() => {
-  const element = document.querySelector('[data-herdr-browser-ref="${ref}"]');
+(() => {${SCAN_PRELUDE}
+  const index = parseInt(String('${ref}').replace(/^e/, ''), 10) - 1;
+  const element = scan()[index];
   if (!element) return { ok: false, error: 'ref ${ref} not found; run snapshot again' };
   element.scrollIntoView({ block: 'center', inline: 'center' });
   element.focus();
