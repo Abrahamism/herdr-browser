@@ -1,4 +1,4 @@
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   click,
@@ -34,6 +34,9 @@ import {
   writeSession
 } from './sessions.mjs'
 import { activateTab, closeTab, listTabs, openTab, resolveTab } from './tabs.mjs'
+import { describeCondition, handoff, parseDuration, parseWaitSpec, waitForCondition } from './wait.mjs'
+
+const PACKAGE_VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
 
 const BOOLEAN_FLAGS = new Set([
   'json',
@@ -61,8 +64,11 @@ export function parseArgs(argv) {
       positional.push(arg)
       continue
     }
-    const [rawKey, inline] = arg.slice(2).split('=')
-    const key = rawKey
+    // Only the first "=" separates the flag from its value: --for url=https://x keeps its url.
+    const body = arg.slice(2)
+    const equals = body.indexOf('=')
+    const key = equals === -1 ? body : body.slice(0, equals)
+    const inline = equals === -1 ? undefined : body.slice(equals + 1)
     if (inline !== undefined) {
       flags[key] = inline
     } else if (BOOLEAN_FLAGS.has(key) || !argv[index + 1] || argv[index + 1].startsWith('--')) {
@@ -218,6 +224,16 @@ Page control (agent):
   herdr-browser get [--what url|title|text|html]
   herdr-browser eval <expression>
   herdr-browser shot [file.png]
+  herdr-browser wait --for <selector|text|url>=<value> [--timeout <ms|s|m>] [--page id] [--json]
+  herdr-browser handoff [--message <text>] [--for <condition>] [--timeout <ms|s|m>] [--json]
+
+Waiting and handoff:
+  wait polls the page and prints "wait: ok after <ms>" when the condition holds; a
+  selector only counts when the element is rendered. A timeout exits with code 1, so a
+  caller can never mistake an unmet condition for success.
+  handoff prints a message for the person and blocks until the page navigates or the
+  --for condition holds: it is how a login, a 2FA prompt or a CAPTCHA is resolved in the
+  dedicated profile. No card, no extension, no daemon - the same process keeps waiting.
 
 Extensions and profile:
   herdr-browser extensions [list|add <dir>|remove <dir>]
@@ -248,12 +264,13 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
   const { flags, positional } = parseArgs(argv)
   const command = positional.shift()
 
-  if (flags.help || command === 'help' || command === undefined) {
-    stdout.write(HELP)
+  // --version wins over the help text: without this order it never printed a version.
+  if (flags.version || command === '--version') {
+    write(`herdr-browser ${PACKAGE_VERSION}`)
     return 0
   }
-  if (flags.version || command === '--version') {
-    write('herdr-browser 0.1.0')
+  if (flags.help || command === 'help' || command === undefined) {
+    stdout.write(HELP)
     return 0
   }
 
@@ -453,6 +470,73 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
         write(`closed: ${closed} tab${closed === 1 ? '' : 's'}`)
         write(`browser: running (${remaining.length} tab${remaining.length === 1 ? '' : 's'} left)`)
         return 0
+      }
+
+      case 'wait': {
+        const condition = parseWaitSpec(flags.for ?? positional[0])
+        const timeoutMs = parseDuration(flags.timeout, 30_000)
+        const connection = await connectExisting(settings)
+        if (!connection) throw new Error('browser is not running')
+        const { cdp, paths } = connection
+        try {
+          const { sessionId } = await pageHandle(cdp, paths, flags)
+          const result = await waitForCondition(cdp, sessionId, condition, {
+            timeoutMs,
+            evaluate: (expression) => evalInPage(cdp, sessionId, expression)
+          })
+          if (flags.json) {
+            write(JSON.stringify(result))
+          } else if (result.ok) {
+            write(`wait: ok after ${result.waitedMs}ms`)
+            write(`url:  ${result.url ?? ''}`)
+          } else {
+            stderr.write(
+              `herdr-browser: wait timed out after ${timeoutMs}ms (${describeCondition(condition)}: ${result.detail ?? 'no answer'})\n`
+            )
+          }
+          return result.ok ? 0 : 1
+        } finally {
+          cdp.close()
+        }
+      }
+
+      case 'handoff': {
+        const condition = flags.for ? parseWaitSpec(flags.for) : null
+        const timeoutMs = parseDuration(flags.timeout, 300_000)
+        const connection = await connectExisting(settings)
+        if (!connection) throw new Error('browser is not running')
+        const { cdp, paths } = connection
+        try {
+          const { tab, sessionId } = await pageHandle(cdp, paths, flags)
+          const message =
+            typeof flags.message === 'string'
+              ? flags.message
+              : 'do the human step in the browser (login, 2FA, confirmation)'
+          if (!flags.json) {
+            write(`human: ${message}`)
+            write(`waiting: ${describeCondition(condition)}`)
+            write(`timeout: ${Math.round(timeoutMs / 1000)}s`)
+          }
+          const result = await handoff(cdp, sessionId, {
+            condition,
+            message,
+            timeoutMs,
+            evaluate: (expression) => evalInPage(cdp, sessionId, expression)
+          })
+          if (flags.json) {
+            write(JSON.stringify({ tab, ...result }))
+          } else if (result.ok) {
+            write(`resumed after ${result.waitedMs}ms`)
+            write(`url:  ${result.url ?? ''}`)
+          } else {
+            stderr.write(
+              `herdr-browser: handoff timed out after ${timeoutMs}ms (${result.detail ?? 'no answer'})\n`
+            )
+          }
+          return result.ok ? 0 : 1
+        } finally {
+          cdp.close()
+        }
       }
 
       case 'snapshot': {

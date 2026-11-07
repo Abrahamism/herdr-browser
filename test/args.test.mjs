@@ -25,6 +25,13 @@ test('parseArgs --key value', () => {
   assert.deepEqual(positional, ['pos'])
 })
 
+test('parseArgs keeps "=" inside the value', () => {
+  const { flags } = parseArgs(['--for', 'url=https://x/y?a=b'])
+  assert.equal(flags.for, 'url=https://x/y?a=b')
+  const inline = parseArgs(['--for=selector=#app'])
+  assert.equal(inline.flags.for, 'selector=#app')
+})
+
 test('parseArgs -- passthrough', () => {
   const { flags, positional } = parseArgs(['--', '--foo', 'bar'])
   assert.deepEqual(positional, ['--foo', 'bar'])

@@ -92,6 +92,25 @@ Si querés aislamiento total, cookies incluidas, cada agente con su propio perfi
 
 El agente usa `snapshot` para obtener refs (`e1`, `e2`…) y luego `click`, `fill`, `type`, `key`, `scroll`, `get`, `eval` y `shot`. Se dibuja un cursor dentro de la página para que el usuario vea dónde actúa.
 
+### Esperar y ceder el control a la persona
+
+```bash
+herdr-browser wait --for selector=#tablero --timeout 20s
+herdr-browser wait --for text="Sesión iniciada" --json
+herdr-browser handoff --message "Entra con tu SSO y avísame"
+herdr-browser handoff --for selector=#inicio --timeout 5m
+```
+
+`wait` consulta la página cada 200 ms y responde `wait: ok after <ms>` cuando la condición se
+cumple. Un `selector=` cuenta como cumplido solo si el elemento se dibuja (no `display:none`), y
+un vencimiento sale con **código 1**: un timeout nunca se reporta como éxito.
+
+`handoff` imprime el mensaje para la persona y bloquea hasta que la página navegue o se cumpla
+`--for`. Es la forma de resolver un login, un 2FA o un CAPTCHA en el perfil dedicado sin que el
+agente adivine: no hay tarjeta ni extensión, es el mismo proceso esperando.
+
+Los tiempos aceptan `500` (milisegundos), `30s` o `5m`.
+
 ## Extensiones
 
 Solo extensiones desempaquetadas (directorios con `manifest.json`):
