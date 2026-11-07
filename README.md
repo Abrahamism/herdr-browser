@@ -116,7 +116,10 @@ Copia `Local State`, cookies, datos de login y directorios de extensiones. Riesg
 
 ## Integración herdr
 
-Plugin con acción de apertura y panel de pestañas en un pane (`herdr-plugin.toml`). Incluye `open-from-herdr`, `open-panel` y `panel`.
+Retirada. El plugin clásico de herdr (`herdr-plugin.toml`, `min_herdr_version = "0.9.0"`) y sus
+entrypoints (`open-from-herdr`, `open-panel`, `panel`) se eliminaron el 2026-11-03 junto con
+herdr 0.9.5. La app vigente es herdr-app y su forma de integración es el mod `browser-tabs`
+de la sección siguiente; `bin/herdr-browser.mjs` es el único entrypoint.
 
 ## Mod de herdr: pestañas del navegador
 
