@@ -1,10 +1,10 @@
 ---
 titulo: Paridad con browse — handoff, retos anti-bot, stealth, allowlist, HAR y TTL de pestañas
 feature: browse-parity
-estatus: en-progreso
+estatus: cerrada
 fecha_creacion: 2026-11-06
 actualizado: 2026-11-06
-siguiente: T7 — release 1.2.0
+siguiente: —
 modo: implementacion
 tags: [herdr-browser, cdp, cli, seguridad, stealth, paridad]
 ---
@@ -64,7 +64,38 @@ tiene sentido con su arquitectura de extensión + relay. Una por una, un commit 
 - [x] **T4** — Allowlist por sesión (`src/origins.mjs`, `allow`, guardia de navegación). Version 1.0.4. Spec: S4, I5.
 - [x] **T5** — Captura de red a HAR con redacción (`src/har.mjs`, comando `network`). Version 1.0.5. Spec: S5, I6.
 - [x] **T6** — TTL de pestañas (`tabs cleanup`, `lastUsedAt`). Version 1.0.6. Spec: S6, I7.
-- [ ] **T7** — Release 1.2.0: README, `skills/herdr-browser/SKILL.md`, CHANGELOG y push. Spec: S7.
+- [x] **T7** — Release 1.2.0: README, `skills/herdr-browser/SKILL.md`, CHANGELOG y push. Spec: S7.
+
+## Evidencia
+
+- **Suite:** `npm test` 99 tests, 98 pass, 0 fail, 1 skip (el e2e, gateado). `npm run test:e2e`
+  1 pass con Brave headless real. Versión final `herdr-browser 1.2.0`.
+- **T1 (1.0.1)** Brave real: `selector=body`, `text=dominio`, `url=example.com` y
+  `handoff --for selector=p` resuelven; `#no-existe` sale 1. El primer intento con
+  "Example Domain" falló porque la página se sirvió localizada en español: el primitivo
+  estaba bien y el smoke estaba mal.
+- **T2 (1.0.2)** Brave real con una página local que imita un intersticial de Cloudflare:
+  reporta `challenge: cloudflare (title and text)`; `example.com` no reporta nada. El test
+  cazó un falso positivo propio: `cloudflare` pelado en el título matcheaba un artículo.
+- **T3 (1.0.3)** Brave real, cuatro procesos: `snapshot` numera e1..e4, `click e2` activa el
+  SEGUNDO botón (`out=two`), `fill e3` escribe el campo, 0 refs en el DOM,
+  `navigator.webdriver` = false, cero `Runtime.enable` en `src/`.
+- **T4 (1.0.4)** Brave real: open permitido, `allow list`, open fuera de lista rechazado con
+  la pestaña intacta, y un 302 real fuera de la lista rechazado y dejado en `about:blank`.
+- **T5 (1.0.5)** Brave real contra un servidor local: la cookie viajó (la página devolvió
+  `eco:session=SUPERSECRET`) y ningún HAR contiene el secreto. Chromium reporta cookies en
+  eventos *extra-info* que el comando no recolecta: documentado como límite medido.
+- **T6 (1.0.6)** Brave real, 3 pestañas en 2 sesiones: dry-run lista 1 y no cierra (3 antes,
+  3 después), cierra la envejecida, `--all` alcanza la otra sesión, `--idle 500` sale 1.
+- **Revisión del padre sobre el trabajo delegado:** T4 llegó sin los tests del matcher y T5
+  con un test que escribía en TEMP sin limpiar y no probaba la redacción; ambas suites las
+  escribió el padre. En T3 el escaneo de elementos quedó copiado tres veces (el modo de
+  falla del esquema por índice) y se unificó en un solo preludio. En T4 el guardia corría
+  después de asignar pestaña; en T5 `network --url` navegaba sin allowlist; en T6 el
+  cleanup pruneaba antes de cerrar. Los tres huecos se corrigieron antes del commit.
+- **Commits:** `af0c8e5` (retirada del plugin viejo, preexistente), `13eba10` T1,
+  `462d947` T2, `5dc1756` T3, `52588f6` T4, `a34ed25` T5, `ffd0505` T6 y el commit de
+  release 1.2.0, todos en la rama `feat/browse-parity`.
 
 ## Log
 

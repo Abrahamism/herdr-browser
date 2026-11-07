@@ -4,7 +4,19 @@ Navegador Chromium real (Brave por defecto) con control por CDP y soporte de ext
 
 ## Qué es
 
-herdr-browser lanza un navegador Chromium en su propia ventana con un perfil dedicado y un endpoint de depuración (CDP). El agente controla la pestaña por CDP (clic, escritura, teclas, desplazamiento, capturas) sin mover el puntero físico ni robar el mouse del usuario. Se integra a herdr como plugin: acciones y un panel de pestañas.
+herdr-browser lanza un navegador Chromium en su propia ventana con un perfil dedicado y un endpoint de depuración (CDP). El agente controla la pestaña por CDP (clic, escritura, teclas, desplazamiento, capturas) sin mover el puntero físico ni robar el mouse del usuario. Se integra a herdr-app con el mod `browser-tabs`, que lista las pestañas en un panel.
+
+## Novedades en 1.2.0
+
+- `wait` y `handoff`: esperar una condición de la página y cederle el navegador a la persona.
+- Detección de retos anti-bot (Cloudflare, Akamai, DataDome, PerimeterX, Imperva, AWS WAF, CAPTCHA).
+- Stealth: sin `Runtime.enable`, refs sin atributos en el DOM, cursor en shadow root cerrado y
+  `--disable-blink-features=AutomationControlled`.
+- Allowlist de orígenes por sesión (`allow`, `open --allow-origin`).
+- Captura de red a HAR con credenciales redactadas (`network`).
+- TTL de pestañas (`tabs cleanup`).
+
+El detalle completo, versión por versión, está en `CHANGELOG.md`.
 
 ## Demo
 
