@@ -26,6 +26,7 @@ import {
   annotateTabs,
   forgetTab,
   hasTab,
+  idleTabs,
   listSessions,
   ownedTabs,
   ownersByTarget,
@@ -34,6 +35,7 @@ import {
   removeSession,
   resolveSession,
   setAllowlist,
+  touchTab,
   writeSession
 } from './sessions.mjs'
 import { activateTab, closeTab, listTabs, openTab, resolveTab } from './tabs.mjs'
@@ -207,6 +209,8 @@ async function pageHandle(cdp, paths, flags) {
     throw new Error(`blocked: ${tab.url} is outside the session allowlist`)
   }
   const sessionId = await preparePage(cdp, tab.id, { cursor: flags.__cursor })
+  const touched = touchTab(session, tab.id)
+  if (touched !== session) writeSession(paths, touched)
   return { tab, sessionId }
 }
 
@@ -236,6 +240,7 @@ Usage:
   herdr-browser open [url] [--new | --reuse] [--browser brave|chrome|edge|chromium] [--profile name] [--allow-origin <patterns>]
   herdr-browser allow [list|add <patterns>|remove <patterns>|clear]
   herdr-browser tabs [--json]
+  herdr-browser tabs cleanup [--idle <ms|s|m>] [--all] [--dry-run] [--json]
   herdr-browser activate <id|index>
   herdr-browser close <id|index>
   herdr-browser status [--json]
@@ -281,6 +286,10 @@ Session:
   --session agent-a / --session agent-b and never retarget each other. Tabs nobody
   claimed (opened by hand or by an older release) are still usable.
   stop closes only the caller's tabs; --all closes the shared browser.
+
+  Tab TTL: tabs cleanup closes idle tabs (default 10m) for the caller; --all reaches
+  every session. A tab nobody owns is never closed: it belongs to the human. Any command
+  that resolves a tab resets its timer, so a tab in active use is never swept.
 
 Global flags:
   --browser <name>   engine to launch (default: brave)
@@ -413,6 +422,66 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
       }
 
       case 'tabs': {
+        if (positional[0] === 'cleanup') {
+          const idleMs = parseDuration(flags.idle, 10 * 60 * 1000)
+          if (idleMs < 1000) throw new Error('--idle must be at least 1000ms (a zero budget would close everything)')
+          const dryRun = !!flags['dry-run']
+          const json = !!flags.json
+          const all = !!flags.all
+          const connection = await connectExisting(settings)
+          if (!connection) throw new Error('browser is not running; run `herdr-browser open <url>` first')
+          const { cdp, paths } = connection
+          try {
+            const liveTabs = await listTabs(cdp)
+            const sessions = all ? listSessions(paths) : [readSession(paths, settings.session)]
+            const now = Date.now()
+            const closedIds = new Set()
+            const closed = []
+            const pendingWrites = []
+            for (const session of sessions) {
+              const eligible = idleTabs(session, liveTabs, { idleMs, now })
+                .map((tab) => tab.id)
+                .filter((id) => !closedIds.has(id))
+              if (!eligible.length) continue
+              // prune from this session file
+              let next = session
+              for (const id of eligible) {
+                const live = liveTabs.find((tab) => tab.id === id)
+                closedIds.add(id)
+                closed.push({ id, url: live?.url ?? null, session: session.session, idleMs })
+                next = forgetTab(next, id)
+              }
+              pendingWrites.push(next)
+            }
+            // Close first, then forget. Pruning before closing leaves an orphan nobody owns,
+            // and an unowned tab is never swept again by design.
+            if (!dryRun) {
+              for (const entry of closed) {
+                try {
+                  await closeTab(cdp, entry.id)
+                } catch {
+                  // Already gone: forgetting it is still the right outcome.
+                }
+              }
+              for (const next of pendingWrites) writeSession(paths, next)
+            }
+            const kept = dryRun ? liveTabs.length - closed.length : (await listTabs(cdp)).length
+            if (json) {
+              write(JSON.stringify({ closed, kept }))
+            } else if (dryRun) {
+              if (closed.length === 0) write('would close: 0 tab(s)')
+              else {
+                write(`would close: ${closed.length} tab(s)`)
+                for (const entry of closed) write(`would close: ${entry.id}	${entry.url ?? ''}`)
+              }
+            } else {
+              write(`closed: ${closed.length} tab(s)`)
+            }
+          } finally {
+            cdp.close()
+          }
+          return 0
+        }
         const connection = await connectExisting(settings)
         if (!connection) throw new Error('browser is not running; run `herdr-browser open <url>` first')
         const { cdp, paths } = connection

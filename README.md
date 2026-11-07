@@ -82,6 +82,8 @@ herdr-browser snapshot --session agent-b
   trabajando; cuando no queda ninguna pestaña en el perfil, cierra el navegador como siempre.
   `stop --all` cierra el navegador compartido.
 
+TTL de pestañas: `tabs cleanup [--idle <ms|s|m>] [--all] [--dry-run] [--json]` cierra las pestañas inactivas (10 minutos por defecto). `--all` alcanza las de todas las sesiones. Una pestaña que nadie posee nunca se cierra: pertenece al humano. Cualquier comando que resuelva una pestaña reinicia su temporizador (`lastUsedAt`), así que una pestaña en uso no se barre.
+
 Dos procesos con el mismo nombre de sesión son, a propósito, un solo cliente: comparten pestaña
 activa y no coordinan escrituras entre sí. Un agente, una sesión.
 
