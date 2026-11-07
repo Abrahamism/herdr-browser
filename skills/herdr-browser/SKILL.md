@@ -65,6 +65,21 @@ node bin/herdr-browser.mjs handoff --for selector=#inicio --timeout 5m
 It prints the message for the user and continues when the page navigates (or when the
 `--for` condition holds). Tell the user what you are waiting for before running it.
 
+Some sites still refuse: the challenge loops even after the person solves the visual step,
+because the page is being driven through CDP. That is not a `handoff` problem, it is a launch
+problem. Use a profile whose session was established without the debugger:
+
+```bash
+node bin/herdr-browser.mjs login https://dash.cloudflare.com --profile cf
+node bin/herdr-browser.mjs --profile cf open https://dash.cloudflare.com
+```
+
+`login` opens the browser with no debugging port and waits for the person to close the window.
+After that, every command on that profile starts authenticated. A brand-new profile has no
+extensions and no cookies: if the person needs their password manager there, run
+`profile import --from brave` (with their browser closed) or `extensions add <dir>` for an
+unpacked extension.
+
 ## Bot challenges
 
 After a navigation, `open` reports Cloudflare, Akamai, DataDome, PerimeterX, Imperva, AWS

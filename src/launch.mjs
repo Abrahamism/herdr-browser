@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ensureDir, readJson, writeJson } from './home.mjs'
 
@@ -27,6 +27,60 @@ export function launchArgs({ userDataDir, port = 0, extensions = [], headless = 
     args.push(`--load-extension=${extensions.join(',')}`)
   }
   return args
+}
+
+/**
+ * Args for a browser the human uses: no debugging port, so nothing can attach to it.
+ * A session established here is written to the profile and survives, which is the only
+ * way past a bot challenge that refuses a CDP-driven launch.
+ */
+export function plainArgs({ userDataDir, url }) {
+  const args = [
+    `--user-data-dir=${userDataDir}`,
+    '--no-first-run',
+    '--no-default-browser-check'
+  ]
+  if (url) args.push(url)
+  return args
+}
+
+export function launchPlain({ exe, userData, url, spawnImpl = spawn }) {
+  ensureDir(userData)
+  return spawnImpl(exe, plainArgs({ userDataDir: userData, url }), { stdio: 'ignore' })
+}
+
+/** Chromium's profile lock: `lockfile` on Windows, `SingletonLock` elsewhere. */
+export function profileLockFile(userData) {
+  for (const name of ['lockfile', 'SingletonLock']) {
+    const file = join(userData, name)
+    if (existsSync(file)) return file
+  }
+  return null
+}
+
+/**
+ * Wait for the human to close the window. The lock is the signal, not the child
+ * process: a browser can hand its window to another process and still hold the profile.
+ */
+export async function waitForProfileRelease(
+  userData,
+  { timeoutMs = 900_000, appearedMs = 20_000, intervalMs = 500 } = {}
+) {
+  const started = Date.now()
+  let appeared = false
+  for (;;) {
+    const elapsed = Date.now() - started
+    if (profileLockFile(userData)) {
+      appeared = true
+    } else if (appeared) {
+      return { released: true, waitedMs: elapsed }
+    } else if (elapsed >= appearedMs) {
+      // It started and finished without ever locking: treat it as closed.
+      return { released: true, waitedMs: elapsed }
+    }
+    if (elapsed >= timeoutMs) return { released: false, waitedMs: elapsed }
+    await sleep(intervalMs)
+  }
 }
 
 export function parseDevToolsActivePort(contents) {

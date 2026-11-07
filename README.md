@@ -194,6 +194,31 @@ herdr-browser profile import --from brave
 
 Copia `Local State`, cookies, datos de login y directorios de extensiones. Riesgo: copia credenciales a un segundo perfil; es una decisión explícita del usuario.
 
+### Iniciar sesión en portales que rechazan la automatización
+
+Algunos sitios (Cloudflare y compañía) rechazan el reto cuando el navegador se lanza con un
+puerto de depuración: la persona resuelve la parte visual y la página igual no avanza. Medido
+contra `dash.cloudflare.com`: un Brave limpio sobre un perfil nuevo pasa el reto, y el mismo
+navegador lanzado por esta herramienta no.
+
+La salida es establecer la sesión sin depurador y después automatizarla:
+
+```bash
+herdr-browser login https://dash.cloudflare.com --profile cf
+# se abre el navegador SIN puerto de depuración: iniciá sesión y cerrá la ventana
+herdr-browser --profile cf open https://dash.cloudflare.com
+```
+
+Un perfil recién creado **no tiene nada tuyo**: ni cookies, ni historial, ni extensiones (por
+ejemplo, tu gestor de contraseñas). Si lo necesitás ahí, `profile import --from brave` copia
+cookies, datos de login y directorios de extensiones desde tu Brave real (con tu navegador
+cerrado, y es una decisión explícita porque duplica credenciales); para una extensión suelta,
+`extensions add <dir>`. `login` lo avisa cuando el perfil está vacío.
+
+`login` espera a que cierres la ventana y deja la sesión guardada en el perfil. Desde ahí
+cualquier comando sobre ese perfil arranca ya autenticado, porque las cookies existen antes de
+que CDP toque nada. Verificado: el dashboard carga sin reto en ese perfil.
+
 ## Integración herdr
 
 Retirada. El plugin clásico de herdr (`herdr-plugin.toml`, `min_herdr_version = "0.9.0"`) y sus

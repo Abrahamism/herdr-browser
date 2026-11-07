@@ -18,8 +18,8 @@ import { CDP } from './cdp.mjs'
 import { addExtension, extensionPaths, listExtensions, removeExtension } from './extensions.mjs'
 import { matchesOrigin, parseAllowlist } from './origins.mjs'
 import { buildHar, captureNetwork } from './har.mjs'
-import { loadConfig, profilePaths, readJson } from './home.mjs'
-import { ensureBrowser, probeVersion } from './launch.mjs'
+import { ensureDir, loadConfig, profilePaths, readJson } from './home.mjs'
+import { ensureBrowser, launchPlain, probeVersion, waitForProfileRelease } from './launch.mjs'
 import { importProfile, profileSummary } from './profile.mjs'
 import { renderExtensions, renderSnapshot, renderStatus, renderTabs } from './render.mjs'
 import {
@@ -278,6 +278,13 @@ Extensions and profile:
   herdr-browser extensions [list|add <dir>|remove <dir>]
   herdr-browser profile [path]
   herdr-browser profile import [--from brave|chrome|edge|chromium] [--force]
+  herdr-browser login <url> [--profile name] [--timeout <ms|s|m>]
+
+Login (portals that refuse an automated launch):
+  login opens the profile's browser WITHOUT a debugging port so a person can sign in.
+  The session lands in the profile; close the window and every later command on that
+  profile starts authenticated. Use it when a site challenges the CDP-driven launch
+  even after the human solves the visual step.
 
 Session:
   Every invocation belongs to a session: --session <name> or HERDR_BROWSER_SESSION,
@@ -862,6 +869,36 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
         } finally {
           cdp.close()
         }
+      }
+
+      case 'login': {
+        const url = positional[0]
+        if (!url) throw new Error('usage: herdr-browser login <url> [--profile name] [--timeout <ms|s|m>]')
+        const paths = pathsFor(settings)
+        const found = resolveBrowser(settings.browser, {
+          exe: settings.exe,
+          env: settings.env,
+          plat: settings.plat
+        })
+        ensureDir(paths.userData)
+        launchPlain({ exe: found.exe, userData: paths.userData, url })
+        write(`browser: ${settings.browser} (no debugging port)`)
+        write(`profile: ${paths.root}`)
+        write('human: sign in in that window; close it when you are done and this command continues')
+        if (!listExtensions(settings.profile, settings.env, settings.plat).length) {
+          // A fresh profile has nothing of the user's: say it before they hunt for a password
+          // manager that is not installed.
+          write('tip: this profile has no extensions or cookies of yours yet')
+          write('     profile import --from brave  (your browser must be closed) or extensions add <dir>')
+        }
+        const timeoutMs = parseDuration(flags.timeout, 900_000)
+        const result = await waitForProfileRelease(paths.userData, { timeoutMs })
+        if (!result.released) {
+          throw new Error(`the window is still open after ${Math.round(result.waitedMs / 1000)}s; close it to keep the session`)
+        }
+        write('session: saved')
+        write(`next: herdr-browser --profile ${settings.profile} open <url>`)
+        return 0
       }
 
       case 'extensions': {

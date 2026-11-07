@@ -3,6 +3,19 @@
 Cambios de herdr-browser. La versión vive en `package.json` y se consulta con
 `herdr-browser --version`. Los comandos y sus límites están documentados en `README.md`.
 
+## 1.2.2 (2026-11-07)
+
+### Añadido
+
+- **`login <url> [--profile] [--timeout]`** — abre el navegador del perfil **sin** puerto de
+  depuración para que una persona inicie sesión, espera a que cierre la ventana y deja la
+  sesión guardada. Es la salida para portales cuyo reto anti-bot rechaza un lanzamiento
+  controlado por CDP: la persona resuelve el reto una vez, sin depurador, y desde ahí cada
+  comando sobre ese perfil arranca autenticado.
+  Medido contra `dash.cloudflare.com`: perfil nuevo en Brave limpio pasa el reto; el mismo
+  navegador lanzado por la herramienta no. Con el perfil logueado vía `login`, el dashboard
+  carga sin reto bajo CDP.
+
 ## 1.2.1 (2026-11-07)
 
 ### Corregido
