@@ -1,4 +1,27 @@
-# herdr-browser
+<h1 align="center">herdr-browser™</h1>
+
+<p align="center"><strong>Un navegador Chromium real para agentes: perfil propio, CDP directo y cero dependencias.</strong></p>
+
+<p align="center">
+  <a href="https://github.com/Abrahamism/herdr-browser/releases"><img src="https://img.shields.io/github/v/release/Abrahamism/herdr-browser?style=for-the-badge&labelColor=1A1218&color=F095C8" alt="versión"></a>
+  <img src="https://img.shields.io/badge/Node.js-22+-F095C8?style=for-the-badge&labelColor=1A1218" alt="Node.js 22+">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-F095C8?style=for-the-badge&labelColor=1A1218" alt="plataformas">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F095C8?style=for-the-badge&labelColor=1A1218" alt="licencia MIT"></a>
+  <img src="https://img.shields.io/badge/dependencias-0-F095C8?style=for-the-badge&labelColor=1A1218" alt="cero dependencias">
+</p>
+
+<p align="center">
+  <strong>
+    <a href="#uso-del-cli">Uso</a> &nbsp;·&nbsp;
+    <a href="#versión-120">Novedades</a> &nbsp;·&nbsp;
+    <a href="#mod-de-herdr-pestañas-del-navegador">Mod</a> &nbsp;·&nbsp;
+    <a href="#allowlist-por-sesión">Allowlist</a> &nbsp;·&nbsp;
+    <a href="#captura-de-red-har">Red</a> &nbsp;·&nbsp;
+    <a href="CHANGELOG.md">Changelog</a>
+  </strong>
+</p>
+
+<br>
 
 Navegador Chromium real (Brave por defecto) con control por CDP y soporte de extensiones de Chrome, pensado para usarse desde herdr.
 
@@ -226,6 +249,21 @@ header llegue en el evento principal.
 - Sin input del sistema operativo (todo por CDP).
 - El puntero físico no se mueve.
 - Si el DOM cambia entre `snapshot` y `click`/`fill`, un ref puede apuntar a otro elemento: volvé a correr `snapshot` antes de actuar.
+
+## Built with
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Node.js-5FA04E?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/Chromium-4285F4?style=flat-square&logo=googlechrome&logoColor=white" alt="Chromium">
+  <img src="https://img.shields.io/badge/CDP-1A1218?style=flat-square&logo=googlechrome&logoColor=F095C8" alt="Chrome DevTools Protocol">
+  <img src="https://img.shields.io/badge/0%20dependencias-F095C8?style=flat-square&labelColor=1A1218&color=F095C8" alt="sin dependencias">
+</p>
+
+<p align="center">
+  <img src="docs/gentle-ai.png" width="64" alt="gentle-ai">
+  <br>
+  <sub>Construido con <a href="https://github.com/Gentleman-Programming/gentle-shell">gentle-ai</a> · orquestación, memoria y revisión</sub>
+</p>
 
 ## Verificación
 
