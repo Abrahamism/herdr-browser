@@ -30,6 +30,7 @@ export function makeServer({ targets = DEFAULT_TARGETS } = {}) {
     created: [],
     closed: [],
     activated: [],
+    navigations: [],
     browserClosed: false,
     nextId: targets.length + 1
   }
@@ -200,6 +201,10 @@ function handleMsg(msg, socket, state) {
     case 'Input.dispatchMouseEvent':
       state.dispatches.push({ type: params.type, x: params.x, y: params.y })
       result = {}
+      break
+    case 'Page.navigate':
+      state.navigations.push(params?.url ?? '')
+      result = { frameId: 'F0' }
       break
     case 'Page.enable':
     case 'Runtime.enable':

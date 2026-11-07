@@ -38,7 +38,7 @@ export function sessionFile(paths, name) {
 }
 
 export function emptySession(name) {
-  return { session: sessionName(name), activeTargetId: null, tabs: [], updatedAt: null }
+  return { session: sessionName(name), activeTargetId: null, tabs: [], allowedOrigins: [], updatedAt: null }
 }
 
 export function readSession(paths, name) {
@@ -56,6 +56,9 @@ export function readSession(paths, name) {
             url: entry.url ?? null,
             openedAt: entry.openedAt ?? null
           }))
+      : [],
+    allowedOrigins: Array.isArray(data.allowedOrigins)
+      ? data.allowedOrigins.filter((entry) => typeof entry === 'string')
       : [],
     updatedAt: data.updatedAt ?? null
   }
@@ -93,6 +96,18 @@ export function listSessions(paths) {
 
 export function hasTab(session, targetId) {
   return session.tabs.some((entry) => entry.id === targetId)
+}
+
+export function setAllowlist(session, patterns) {
+  const seen = new Set()
+  const out = []
+  for (const pattern of patterns ?? []) {
+    if (typeof pattern !== 'string') continue
+    if (seen.has(pattern)) continue
+    seen.add(pattern)
+    out.push(pattern)
+  }
+  return { ...session, allowedOrigins: out }
 }
 
 export function recordTab(session, targetId, meta = {}) {

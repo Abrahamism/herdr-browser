@@ -175,6 +175,20 @@ herdr-app do pane.split --direction right --mod browser-tabs
 
 La receta completa para reconstruirlo desde cero está en `RECIPE.md`.
 
+## Allowlist por sesión
+
+`open --allow-origin <patrones>` fija una lista de orígenes permitidos en el archivo de la sesión. `allow list|add|remove|clear` la administra. Reglas de matching:
+
+- `about:blank` siempre se permite.
+- Un patrón sin puerto vale para cualquier puerto; con puerto debe coincidir exacto.
+- `example.com` coincide solo con `example.com` (no subdominios).
+- `*.example.com` coincide con cualquier subdominio y nunca con el apex.
+- Un patrón con esquema (`https://example.com`) exige el mismo esquema y host (puerto por defecto).
+- `file://` solo se permite si el patrón es literalmente `file://`.
+- Una URL que no se puede parsear nunca coincide.
+
+Límite honesto: un popup que sale de la lista se rechaza cuando el siguiente comando de página lo resuelve; no se cierra automáticamente, porque no hay proceso vigilante.
+
 ## Límites
 
 - Sin Web Store (solo extensiones desempaquetadas).

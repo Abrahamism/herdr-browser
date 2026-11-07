@@ -16,6 +16,7 @@ import {
 import { BROWSER_NAMES, detectBrowsers, resolveBrowser } from './browsers.mjs'
 import { CDP } from './cdp.mjs'
 import { addExtension, extensionPaths, listExtensions, removeExtension } from './extensions.mjs'
+import { matchesOrigin, parseAllowlist } from './origins.mjs'
 import { loadConfig, profilePaths, readJson } from './home.mjs'
 import { ensureBrowser, probeVersion } from './launch.mjs'
 import { importProfile, profileSummary } from './profile.mjs'
@@ -31,6 +32,7 @@ import {
   recordTab,
   removeSession,
   resolveSession,
+  setAllowlist,
   writeSession
 } from './sessions.mjs'
 import { activateTab, closeTab, listTabs, openTab, resolveTab } from './tabs.mjs'
@@ -184,7 +186,12 @@ async function resolveTarget(cdp, paths, flags, session) {
 }
 
 async function pageHandle(cdp, paths, flags) {
-  const tab = await resolveTarget(cdp, paths, flags, readSession(paths, flags.__session))
+  const session = readSession(paths, flags.__session)
+  const tab = await resolveTarget(cdp, paths, flags, session)
+  const allowed = session.allowedOrigins ?? []
+  if (allowed.length && !matchesOrigin(tab.url ?? '', allowed)) {
+    throw new Error(`blocked: ${tab.url} is outside the session allowlist`)
+  }
   const sessionId = await preparePage(cdp, tab.id, { cursor: flags.__cursor })
   return { tab, sessionId }
 }
@@ -212,7 +219,8 @@ const HELP = `herdr-browser — a real Chromium browser (Brave by default) with 
 
 Usage:
   herdr-browser browsers
-  herdr-browser open [url] [--new | --reuse] [--browser brave|chrome|edge|chromium] [--profile name]
+  herdr-browser open [url] [--new | --reuse] [--browser brave|chrome|edge|chromium] [--profile name] [--allow-origin <patterns>]
+  herdr-browser allow [list|add <patterns>|remove <patterns>|clear]
   herdr-browser tabs [--json]
   herdr-browser activate <id|index>
   herdr-browser close <id|index>
@@ -267,6 +275,7 @@ Global flags:
   --exe <path>       explicit browser executable
   --no-cursor        do not draw the agent cursor inside the page
   --challenge-wait <ms|s|m>  how long to wait out a bot challenge after navigating (default: 15s)
+  --allow-origin <patterns>  comma/space separated origins pinned to this session
   --json             machine-readable output where supported
   --headless         launch headless (useful for tests)
 `
@@ -304,9 +313,18 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
 
       case 'open': {
         const url = positional[0]
+        const allowOriginFlag = flags['allow-origin']
+        const parsedAllow = allowOriginFlag ? parseAllowlist(allowOriginFlag) : []
         const { cdp, paths } = await connectOrLaunch(settings)
         try {
           const session = readSession(paths, settings.session)
+          const effectiveAllow = parsedAllow.length
+            ? setAllowlist(session, [...(session.allowedOrigins ?? []), ...parsedAllow]).allowedOrigins
+            : (session.allowedOrigins ?? [])
+          // Refuse before touching the browser: a denied open must not leave a tab behind.
+          if (url && effectiveAllow.length && !matchesOrigin(url, effectiveAllow)) {
+            throw new Error(`blocked: ${url} is outside the session allowlist (run \`herdr-browser allow list\`)`)
+          }
           const tabs = await listTabs(cdp)
           const mine = ownedTabs(session, tabs)
           let targetId
@@ -332,9 +350,17 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
           if (url) {
             navigation = await navigate(cdp, sessionId, url, { challengeWaitMs: settings.challengeWait })
           }
+          if (url && effectiveAllow.length) {
+            // A redirect is a navigation too: leaving the list is refused, not noted for later.
+            const landed = (await listTabs(cdp)).find((item) => item.id === targetId)?.url ?? ''
+            if (!matchesOrigin(landed, effectiveAllow)) {
+              await navigate(cdp, sessionId, 'about:blank', { challengeWaitMs: null })
+              throw new Error(`blocked: ${landed} is outside the session allowlist (redirected out of it)`)
+            }
+          }
           await activateTab(cdp, targetId)
           const [tab] = (await listTabs(cdp)).filter((item) => item.id === targetId)
-          writeSession(paths, recordTab(session, targetId, { title: tab?.title, url: tab?.url }))
+          writeSession(paths, setAllowlist(recordTab(session, targetId, { title: tab?.title, url: tab?.url }), effectiveAllow))
           const challenge = navigation.challenge
             ? {
                 kind: navigation.challenge.kind,
@@ -802,6 +828,49 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
         write(`extensions: ${extensionPaths(settings.profile, settings.env, settings.plat).length}`)
         if (connection) connection.cdp.close()
         return 0
+      }
+
+      case 'allow': {
+        const action = positional[0] ?? 'list'
+        const paths = pathsFor(settings)
+        if (action === 'list') {
+          const session = readSession(paths, settings.session)
+          const list = session.allowedOrigins ?? []
+          if (!list.length) {
+            write('allowlist: none (no restriction)')
+          } else {
+            write(`allowlist: ${list.join(', ')}`)
+          }
+          return 0
+        }
+        if (action === 'add') {
+          const patterns = parseAllowlist(positional.slice(1).join(' '))
+          if (!patterns.length) throw new Error('usage: herdr-browser allow add <patterns>')
+          const session = readSession(paths, settings.session)
+          const merged = setAllowlist(session, [...(session.allowedOrigins ?? []), ...patterns]).allowedOrigins
+          writeSession(paths, setAllowlist(session, merged))
+          write(`allowlist: ${merged.join(', ')}`)
+          return 0
+        }
+        if (action === 'remove') {
+          const patterns = parseAllowlist(positional.slice(1).join(' '))
+          if (!patterns.length) throw new Error('usage: herdr-browser allow remove <patterns>')
+          const session = readSession(paths, settings.session)
+          const current = session.allowedOrigins ?? []
+          const removeSet = new Set(patterns)
+          const next = current.filter((p) => !removeSet.has(p))
+          writeSession(paths, setAllowlist(session, next))
+          if (!next.length) write('allowlist: none (no restriction)')
+          else write(`allowlist: ${next.join(', ')}`)
+          return 0
+        }
+        if (action === 'clear') {
+          const session = readSession(paths, settings.session)
+          writeSession(paths, setAllowlist(session, []))
+          write('allowlist: none (no restriction)')
+          return 0
+        }
+        throw new Error(`unknown allow action "${action}" (use list, add, remove or clear)`)
       }
 
       default:
