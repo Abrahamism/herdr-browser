@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { runCli } from './fake-cdp.mjs'
 import { withFakeCdp } from './harness.mjs'
-import { challengeProbeScript, detectChallenge } from '../src/challenge.mjs'
+import { challengeProbeScript, detectChallenge, waitOutChallenge } from '../src/challenge.mjs'
 
 const CLOUDFLARE = {
   title: 'Just a moment...',
@@ -57,6 +57,49 @@ test('a clean page is not a challenge', () => {
     null
   )
   assert.equal(detectChallenge(undefined), null)
+})
+
+test('the Spanish interstitial is recognised', () => {
+  const spanish = {
+    title: 'Un momento…',
+    text: [
+      'dash.cloudflare.com Verificación de seguridad en curso Este sitio web utiliza un',
+      'servicio de seguridad para protegerse contra bots maliciosos. Esta página se muestra',
+      'mientras el sitio web verifica que tú no eres un bot. Ray ID: a56fb99e28bcf03c'
+    ].join(' '),
+    markers: {}
+  }
+  assert.deepEqual(detectChallenge(spanish), { kind: 'cloudflare', signal: 'title and text' })
+})
+
+test('a challenge that appears after the first probe is still detected', async () => {
+  const pages = [
+    { title: 'Just a moment...', text: '', markers: {} },
+    { title: 'Just a moment...', text: '', markers: {} },
+    CLOUDFLARE
+  ]
+  let calls = 0
+  const result = await waitOutChallenge({
+    waitMs: 0,
+    settleMs: 900,
+    evaluate: async () => pages[Math.min(calls++, pages.length - 1)]
+  })
+  assert.equal(result.challenge.kind, 'cloudflare')
+  assert.equal(calls, 3, 'it must keep probing while the page is still blank')
+})
+
+test('a page with content is not probed twice', async () => {
+  let calls = 0
+  const result = await waitOutChallenge({
+    waitMs: 0,
+    settleMs: 900,
+    evaluate: async () => {
+      calls += 1
+      return { title: 'Example Domain', text: 'This domain is for use in examples.', markers: {} }
+    }
+  })
+  assert.equal(result.challenge, null)
+  assert.equal(calls, 1)
 })
 
 test('the probe script is marked and bounded', () => {

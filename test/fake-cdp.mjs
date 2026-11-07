@@ -177,7 +177,7 @@ function handleMsg(msg, socket, state) {
       const expr = params?.expression ?? ''
       if (expr.includes('__hbChallenge')) {
         state.challengeCalls = (state.challengeCalls ?? 0) + 1
-        const answer = state.challengeResult ?? { title: 'Fake', text: '', markers: {} }
+        const answer = state.challengeResult ?? { title: 'Fake', text: 'Fake page content.', markers: {} }
         result = { result: { value: { url: 'http://fake/', ...answer } } }
       } else if (expr.includes('__hbWait')) {
         state.waitCalls = (state.waitCalls ?? 0) + 1

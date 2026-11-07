@@ -18,7 +18,7 @@ export const CHALLENGE_SIGNATURES = [
     // A bare brand name in the title is a blog post, not a challenge: the interstitials
     // that matter are titled `Just a moment...` or `Attention Required! | Cloudflare`.
     title: /just a moment|attention required|please wait|un momento/i,
-    text: /checking your browser|verifying you are human|verify you are human|enable javascript and cookies|cf-browser-verification|ray id|verificando/i
+    text: /checking your browser|verifying you are human|verify you are human|enable javascript and cookies|cf-browser-verification|ray id|verificando|verificaci[oó]n de seguridad|seguridad en curso|no eres un bot|no es un robot/i
   },
   {
     kind: 'akamai',
@@ -103,7 +103,7 @@ export function challengeProbeScript() {
  * Wait for a challenge the browser clears by itself. A challenge that survives the whole
  * budget is returned as-is: the caller reports it and hands the page to a person.
  */
-export async function waitOutChallenge({ waitMs = 15_000, intervalMs = 1000, evaluate } = {}) {
+export async function waitOutChallenge({ waitMs = 15_000, intervalMs = 1000, settleMs = 1500, evaluate } = {}) {
   if (typeof evaluate !== 'function') throw new Error('waitOutChallenge needs an evaluate function')
   const probe = async () => {
     const page = await evaluate(challengeProbeScript())
@@ -111,6 +111,21 @@ export async function waitOutChallenge({ waitMs = 15_000, intervalMs = 1000, eva
   }
 
   let { page, challenge } = await probe()
+  // A challenge shell renders an empty body first and fills it a moment later. Probing
+  // once and quitting is how the real Cloudflare interstitial on dash.cloudflare.com
+  // slipped through: the detector said "clean" while the page was still blank.
+  if (!challenge && settleMs > 0) {
+    const settleDeadline = Date.now() + settleMs
+    while (!challenge && Date.now() < settleDeadline) {
+      if (String(page?.text ?? '').trim().length > 0) break
+      await sleep(150)
+      try {
+        ;({ page, challenge } = await probe())
+      } catch {
+        // Navigating between probes; keep trying until the settle budget ends.
+      }
+    }
+  }
   if (!challenge) return { challenge: null, cleared: false, waitedMs: 0, page }
   if (waitMs <= 0) return { challenge, cleared: false, waitedMs: 0, page }
 

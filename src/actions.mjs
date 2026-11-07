@@ -186,6 +186,8 @@ export async function navigate(cdp, sessionId, url, { challengeWaitMs = null } =
   if (errorText) throw new Error(`navigation failed: ${errorText}`)
   await waitForLoad(cdp, sessionId)
   if (challengeWaitMs === null) return { challenge: null, cleared: false, waitedMs: 0 }
+  // A blank document cannot be challenged; waiting to settle it is pure latency.
+  if (url === 'about:blank') return { challenge: null, cleared: false, waitedMs: 0 }
   return waitOutChallenge({
     waitMs: challengeWaitMs,
     evaluate: (expression) => evaluate(cdp, sessionId, expression, { timeoutMs: 15_000 })

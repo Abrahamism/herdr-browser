@@ -3,6 +3,21 @@
 Cambios de herdr-browser. La versión vive en `package.json` y se consulta con
 `herdr-browser --version`. Los comandos y sus límites están documentados en `README.md`.
 
+## 1.2.1 (2026-11-07)
+
+### Corregido
+
+- **El detector de retos se perdía el intersticial real de Cloudflare.** La página se
+  sirve como un cascarón vacío que recién después se rellena; el sondeo corría una sola
+  vez, encontraba el cuerpo en blanco y concluía "limpio". Ahora vuelve a sondear
+  mientras el documento no tenga texto, con un presupuesto de 1,5 s (`settleMs`).
+  Verificado contra `dash.cloudflare.com`: antes no reportaba nada, ahora imprime
+  `challenge: cloudflare (title and text)`.
+- **Faltaba el texto en español del reto** (`Verificación de seguridad en curso`, `no eres
+  un bot`): solo estaban las frases en inglés y `verificando`.
+- `about:blank` ya no paga el sondeo de asentamiento: un documento vacío no puede ser
+  retado.
+
 ## 1.2.0 (2026-11-06)
 
 Versión de la entrega de paridad con las herramientas de navegador basadas en extensión,
