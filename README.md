@@ -6,17 +6,22 @@ Navegador Chromium real (Brave por defecto) con control por CDP y soporte de ext
 
 herdr-browser lanza un navegador Chromium en su propia ventana con un perfil dedicado y un endpoint de depuración (CDP). El agente controla la pestaña por CDP (clic, escritura, teclas, desplazamiento, capturas) sin mover el puntero físico ni robar el mouse del usuario. Se integra a herdr-app con el mod `browser-tabs`, que lista las pestañas en un panel.
 
-## Novedades en 1.2.0
+## Versión 1.2.0
 
-- `wait` y `handoff`: esperar una condición de la página y cederle el navegador a la persona.
-- Detección de retos anti-bot (Cloudflare, Akamai, DataDome, PerimeterX, Imperva, AWS WAF, CAPTCHA).
-- Stealth: sin `Runtime.enable`, refs sin atributos en el DOM, cursor en shadow root cerrado y
-  `--disable-blink-features=AutomationControlled`.
-- Allowlist de orígenes por sesión (`allow`, `open --allow-origin`).
-- Captura de red a HAR con credenciales redactadas (`network`).
-- TTL de pestañas (`tabs cleanup`).
+Lo que trae esta entrega. Cada punto tiene su sección más abajo.
 
-El detalle completo, versión por versión, está en `CHANGELOG.md`.
+| Mejora | Cómo se usa | Qué resuelve |
+|---|---|---|
+| Esperar sin polling | `wait --for ...` | Bloquea hasta que la página llega al estado pedido; un timeout sale con código 1, nunca como éxito |
+| Ceder el navegador | `handoff --message ...` | Login, 2FA o CAPTCHA: lo hace la persona y el agente sigue solo |
+| Retos anti-bot | `open --challenge-wait` | Reporta Cloudflare, Akamai, DataDome, PerimeterX, Imperva, AWS WAF y CAPTCHA en vez de fingir que la página cargó |
+| Menos detectable | automático | Sin `Runtime.enable`, sin refs en el DOM, cursor en shadow root cerrado, `navigator.webdriver` en false |
+| Allowlist por sesión | `allow`, `open --allow-origin` | El agente no sale de los dominios autorizados; un redirect fuera de la lista se rechaza |
+| Captura de red | `network --url ... --file x.har` | HAR 1.2 con credenciales redactadas y sin cuerpos de respuesta |
+| Limpieza de pestañas | `tabs cleanup --idle 10m` | Cierra lo ocioso; nunca una pestaña que abrió una persona |
+
+La versión instalada se consulta con `herdr-browser --version`; el detalle completo está en
+`CHANGELOG.md`.
 
 ## Demo
 

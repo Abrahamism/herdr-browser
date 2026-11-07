@@ -1,90 +1,77 @@
 # Changelog
 
-All notable changes to herdr-browser. This project uses semantic versioning.
-
-## 1.2.1 (2026-11-06)
-
-### Fixed
-
-- **Query-string credentials reached the HAR in plain text.** An independent verification
-  of 1.2.0 found that `?token=...`, `?api_key=...` and `?session_id=...` were copied
-  verbatim into `request.url` and `request.queryString` while headers and bodies were
-  redacted. `redactUrl` now rewrites those parameters to `<redacted>` and leaves the rest
-  of the query intact (`?store_id=42` stays readable). Unchanged URLs are written byte
-  for byte.
+Cambios de herdr-browser. La versión vive en `package.json` y se consulta con
+`herdr-browser --version`. Los comandos y sus límites están documentados en `README.md`.
 
 ## 1.2.0 (2026-11-06)
 
-Closes the gap with browser tools built on an extension + relay, without adopting their
-architecture: a dedicated profile, direct CDP, no dependencies.
+Versión de la entrega de paridad con las herramientas de navegador basadas en extensión,
+sin adoptar su arquitectura: perfil dedicado, CDP directo y cero dependencias externas.
+Durante el desarrollo se usaron hitos internos (1.0.1 a 1.0.6, uno por capacidad); no
+fueron versiones publicadas y se consolidan acá.
 
-### Added
+### Añadido
 
-- **`wait --for selector|text|url=<value> [--timeout]`** — blocks on a page condition
-  instead of polling snapshots. A selector counts only when the element is rendered, and a
-  timeout exits 1.
-- **`handoff [--message] [--for] [--timeout]`** — prints the human step and blocks until the
-  page navigates or the condition holds. This is how logins, 2FA and CAPTCHAs are resolved
-  in the dedicated profile: the same process waits, there is no card and no daemon.
-- **Bot challenge detection** — after a navigation, `open` recognizes Cloudflare, Akamai,
-  DataDome, PerimeterX, Imperva, AWS WAF interstitials and mounted CAPTCHA widgets, waits
-  `--challenge-wait` (15s, `HERDR_BROWSER_CHALLENGE_WAIT_MS`) for the browser to clear them
-  and never solves an interactive one. Hard interstitials need two signals (title and text)
-  so a page that merely mentions Cloudflare is not treated as a block.
-- **`allow list|add|remove|clear` and `open --allow-origin`** — a per-session origin
-  allowlist. `example.com` pins that host, `*.example.com` covers subdomains and never the
-  apex, a URL pattern pins the scheme, `about:blank` is always reachable. A navigation
-  outside the list is refused before it reaches the browser, and a redirect that leaves the
-  list is blanked and refused.
-- **`network [--url] [--idle] [--timeout] [--file] [--json]`** — captures a page's traffic
-  into a HAR 1.2 with credential headers redacted and no response bodies. One invocation:
-  attach, optionally navigate, wait for network idle, write the file.
-- **`tabs cleanup [--idle] [--all] [--dry-run]`** — sweeps idle tabs. Tabs carry
-  `lastUsedAt`, any command that resolves a tab resets it, and a tab nobody owns is never
-  closed because it belongs to the human.
+- **`wait --for selector|text|url=<valor> [--timeout]`** — espera una condición de la página
+  sin hacer polling de `snapshot`. Un `selector=` cuenta solo si el elemento se dibuja, y un
+  vencimiento sale con código 1: un timeout nunca se reporta como éxito.
+- **`handoff [--message] [--for] [--timeout]`** — imprime el paso humano y bloquea hasta que la
+  página navega o se cumple la condición. Es la forma de resolver login, 2FA o CAPTCHA en el
+  perfil dedicado: el mismo proceso espera, sin tarjeta ni daemon.
+- **Detección de retos anti-bot** — tras cada navegación, `open` reconoce intersticiales de
+  Cloudflare, Akamai, DataDome, PerimeterX, Imperva y AWS WAF, además de CAPTCHA montados
+  (Turnstile, reCAPTCHA, hCaptcha, PerimeterX, DataDome). Espera `--challenge-wait` (15 s por
+  defecto, `HERDR_BROWSER_CHALLENGE_WAIT_MS`) a que el navegador lo resuelva solo y **nunca**
+  resuelve uno interactivo.
+- **`allow list|add|remove|clear` y `open --allow-origin`** — allowlist de orígenes por sesión.
+  `example.com` fija ese host, `*.example.com` cubre subdominios y nunca el apex, un patrón con
+  esquema fija el esquema, `about:blank` siempre se permite. Una navegación fuera de la lista
+  se rechaza antes de tocar el navegador, y un redirect que sale de la lista se deja en blanco
+  y se rechaza.
+- **`network [--url] [--idle] [--timeout] [--file] [--json]`** — captura el tráfico de una
+  página en un HAR 1.2 con credenciales redactadas y sin cuerpos de respuesta. Una sola
+  invocación: adjunta, opcionalmente navega, espera red ociosa y escribe el archivo.
+- **`tabs cleanup [--idle] [--all] [--dry-run]`** — barre pestañas ociosas. Cada pestaña lleva
+  `lastUsedAt`, cualquier comando que resuelva una pestaña reinicia el contador, y una pestaña
+  que no es de ninguna sesión nunca se cierra: es de la persona.
 
-### Changed
+### Cambiado
 
-- Refs are positions in one shared element scan instead of `data-herdr-browser-ref`
-  attributes: nothing is written into the page, refs still work across processes, and if the
-  DOM moves between `snapshot` and `click` the ref can address another element — re-run
-  `snapshot` before acting.
-- `--key=value` splits on the first `=` only, so `--for url=https://x?a=b` keeps its value.
-- `--timeout`, `--idle` and `--challenge-wait` accept `500`, `30s`, `5m`.
+- Los refs pasaron de atributos `data-herdr-browser-ref` en el DOM a **posiciones en un único
+  recorrido** (orden del DOM, solo visibles, tope de 500). No se escribe nada en la página y
+  los refs siguen sirviendo desde otro proceso; si el DOM cambia entre `snapshot` y `click`,
+  el número puede apuntar a otro elemento, así que hay que volver a hacer `snapshot`.
+- `--clave=valor` corta solo en el primer `=`, así `--for url=https://x?a=b` conserva el valor.
+- `--timeout`, `--idle` y `--challenge-wait` aceptan `500`, `30s` o `5m`.
 
-### Fixed
+### Corregido y seguridad
 
-- No `Runtime.enable` is sent to page sessions, the classic CDP automation tell. Frame
-  contexts come from `Page.createIsolatedWorld` instead.
-- The cursor lives in a closed shadow root and exposes no `window` globals.
-- `--disable-blink-features=AutomationControlled` is passed at launch, so
-  `navigator.webdriver` is false without patching descriptors.
-- `--version` printed the help text instead of the version.
-- `tabs cleanup` pruned the session file before closing, so a failed close left an orphan
-  no sweep would ever reach. It now closes first and forgets after.
-- `network --url` navigated without consulting the allowlist.
+- **Ningún `Runtime.enable` en sesiones de página**, el tell clásico de CDP. Los contextos de
+  frame salen de `Page.createIsolatedWorld`.
+- **Cursor en shadow root cerrado**, sin globales en `window` (`__hbPos`, `__hbPaint`).
+- **`--disable-blink-features=AutomationControlled`** al lanzar: `navigator.webdriver` queda en
+  false sin parchear descriptores.
+- **`--version`** imprimía la ayuda en lugar de la versión.
+- **`tabs cleanup`** podaba el archivo de sesión antes de cerrar, así que un cierre fallido
+  dejaba una pestaña huérfana que ningún barrido alcanzaba. Ahora cierra primero y olvida después.
+- **`network --url`** navegaba sin consultar la allowlist.
+- **Credenciales en la query string** (`?token=...`, `?api_key=...`, `?session_id=...`) se
+  escribían en claro en el HAR aunque los headers y los cuerpos se redactaban. `redactUrl` las
+  reemplaza por `<redacted>` y deja intacto el resto de la query (`?store_id=42` sigue legible).
+  Lo encontró una verificación independiente antes de publicar.
 
-## 1.0.6
+### Límites conocidos
 
-Tab TTL: `lastUsedAt`, `touchTab`, `idleTabs` and `tabs cleanup`.
+- Captura de red: vive dentro de una invocación, no hay daemon entre comandos. Chromium reporta
+  cookies y `Authorization` en eventos *extra-info* del protocolo que `network` no recolecta,
+  así que un HAR puede ser silencioso al respecto (verificado: la cookie viaja y no queda registrada).
+- Un popup que sale de la allowlist se rechaza cuando el siguiente comando de página lo resuelve;
+  no se cierra automáticamente.
+- IPv6 literal (`[::1]`) no se puede fijar en la allowlist; usá un nombre o `127.0.0.1`.
 
-## 1.0.5
+### Verificación de esta versión
 
-Network capture into a redacted HAR (`network`).
-
-## 1.0.4
-
-Per-session origin allowlist (`allow`, `open --allow-origin`).
-
-## 1.0.3
-
-Stealth: no `Runtime.enable`, refs by scan position, closed-shadow cursor and the
-automation-control launch switch.
-
-## 1.0.2
-
-Bot challenge detection and `--challenge-wait`.
-
-## 1.0.1
-
-`wait` and `handoff`; `--version` reports the package version.
+- `npm test`: 101 tests, 100 pass, 0 fail, 1 skip (el e2e, gateado).
+- `npm run test:e2e`: 1 pass con Brave headless real.
+- Cada capacidad se probó además a mano contra Brave real: refs entre procesos, redirect fuera
+  de la lista, cookie que viaja sin quedar en el HAR y barrido de pestañas ociosas.
