@@ -9,6 +9,14 @@ const SENSITIVE_HEADERS = new Set([
   'x-csrf-token'
 ])
 const SENSITIVE_FIELD = /password|passwd|secret|token|otp/i
+/**
+ * A credential in the query string is as good as one in a header, and it was being
+ * written in plain text. Names are matched with their separators so useful params
+ * survive (store_id is data; session_id is not), and the safe direction is to redact.
+ */
+const SENSITIVE_QUERY =
+  /token|secret|password|passwd|otp|credential|apikey|api[_-]?key|signature|auth|session|(?:^|[_-])(?:key|code|sig|sid)$/i
+export const REDACTED_MARK = REDACTED
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -90,6 +98,24 @@ function redactJson(value) {
   return value
 }
 
+/** Rewrite a URL whose query string carries credentials. Unchanged when it carries none. */
+export function redactUrl(raw) {
+  const text = String(raw ?? '')
+  let url
+  try {
+    url = new URL(text)
+  } catch {
+    return text
+  }
+  let changed = false
+  for (const name of [...url.searchParams.keys()]) {
+    if (!SENSITIVE_QUERY.test(name)) continue
+    url.searchParams.set(name, REDACTED)
+    changed = true
+  }
+  return changed ? url.toString() : text
+}
+
 function parseQueryString(url) {
   try {
     const u = new URL(url)
@@ -107,7 +133,7 @@ export function buildHar(entries, { version } = {}) {
   const mapped = (entries ?? []).map((entry) => {
     const req = entry?.request ?? {}
     const res = entry?.response ?? {}
-    const url = req.url ?? ''
+    const url = redactUrl(req.url ?? '')
     const reqHeaders = redactHeaders(Array.isArray(req.headers) ? req.headers : normalizeHeaders(req.headers))
     const resHeaders = redactHeaders(Array.isArray(res.headers) ? res.headers : normalizeHeaders(res.headers))
     const content = res.content ?? { mimeType: res.mimeType ?? '', size: res.size ?? 0 }

@@ -205,7 +205,7 @@ Límite honesto: un popup que sale de la lista se rechaza cuando el siguiente co
 
 ## Captura de red (HAR)
 
-`network [--url <url>] [--idle <ms>] [--timeout <ms>] [--file <out.har>] [--json]` adjunta a la pestaña resuelta, opcionalmente navega, espera red ociosa y escribe un HAR 1.2 con `Authorization`, `Cookie`, `Set-Cookie` y otros headers sensibles redactados a `<redacted>`. Los cuerpos de respuesta no se almacenan.
+`network [--url <url>] [--idle <ms>] [--timeout <ms>] [--file <out.har>] [--json]` adjunta a la pestaña resuelta, opcionalmente navega, espera red ociosa y escribe un HAR 1.2 con `Authorization`, `Cookie`, `Set-Cookie` y otros headers sensibles redactados a `<redacted>`. También se redactan los parámetros sensibles de la query string (`?token=…`, `?api_key=…`, `?session_id=…`) y se dejan intactos los que son datos (`?store_id=42`). Los cuerpos de respuesta no se almacenan.
 
 Límite honesto: la captura vive dentro de una sola invocación; no hay daemon que escuche entre comandos. El comando adjunta, opcionalmente navega, espera red ociosa y escribe el archivo.
 Segundo límite, medido y no supuesto: Chromium reporta cookies y `Authorization` en los eventos

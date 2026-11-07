@@ -102,8 +102,8 @@ node bin/herdr-browser.mjs network --url https://app.example.com/home --file cap
 ```
 
 One invocation: attach, optionally navigate, wait for network idle, write a HAR 1.2 with
-credential headers redacted and no response bodies. Response bodies and cookies are not
-stored.
+credential headers and credential query parameters redacted and no response bodies.
+Response bodies and cookies are not stored.
 
 ## Sessions (more than one agent)
 

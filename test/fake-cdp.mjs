@@ -261,7 +261,7 @@ function networkPlan(state) {
     {
       requestId: 'r1',
       request: {
-        url: 'https://example.com/',
+        url: 'https://example.com/?token=SECRETQUERY&store_id=7',
         method: 'GET',
         headers: { Cookie: 'secret-cookie', Authorization: 'Bearer secret-token' }
       },

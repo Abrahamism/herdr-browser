@@ -97,6 +97,17 @@ tiene sentido con su arquitectura de extensión + relay. Una por una, un commit 
   `462d947` T2, `5dc1756` T3, `52588f6` T4, `a34ed25` T5, `ffd0505` T6 y el commit de
   release 1.2.0, todos en la rama `feat/browse-parity`.
 
+- **T8 (verificación independiente, `gentle-ai-verify`):** allowlist PASS — el matcher
+  rechaza host fuera de lista, el truco de userinfo (`https://example.com@evil.example/`),
+  la subida de subdominio al apex y la bajada de esquema; el guardia está en los tres
+  puntos que navegan (`open` `src/cli.mjs:371`, `pageHandle` `:207-210`, `network --url`
+  `:833`). **Redacción FAIL en 1.2.0**: `?token=…`, `?api_key=…` y `?session_id=…`
+  llegaban en claro a `request.url` y `request.queryString` (`src/har.mjs:95-108`).
+  Corregido en 1.2.1 con `redactUrl` (parámetros sensibles a `<redacted>`, datos
+  intactos, URL sin cambios byte por byte) y cubierto por tests unitarios y de CLI.
+  Lección: mi propia verificación real usó cabeceras y cookies, nunca un secreto en la
+  query string; el hueco estaba justo fuera de lo que probé.
+
 ## Log
 
 - **L1** (2026-11-06) — Pedido original, literal: "Va, los que propones me agradan. Hazlo,

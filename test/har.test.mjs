@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildHar, captureNetwork, redactHeaders, redactPostData } from '../src/har.mjs'
+import { buildHar, captureNetwork, redactHeaders, redactPostData, redactUrl } from '../src/har.mjs'
 
 test('redactHeaders redacts sensitive headers', () => {
   const out = redactHeaders([
@@ -27,6 +27,36 @@ test('redactPostData handles form', () => {
 
 test('redactPostData unchanged when unparseable', () => {
   assert.equal(redactPostData('hello world'), 'hello world')
+})
+
+test('a credential in the query string is redacted in the url and in queryString', () => {
+  const har = buildHar(
+    [
+      {
+        request: {
+          method: 'GET',
+          url: 'https://x.example/collect?token=SECRET9&store_id=42&api_key=zzz',
+          headers: []
+        },
+        response: { status: 200, statusText: 'OK', headers: [] }
+      }
+    ],
+    { version: '1.2.1' }
+  )
+  const text = JSON.stringify(har)
+  assert.ok(!text.includes('SECRET9'), 'the token must not survive anywhere')
+  assert.ok(!text.includes('zzz'), 'the api key must not survive anywhere')
+  const entry = har.log.entries[0]
+  assert.ok(entry.request.url.includes('store_id=42'), 'useful parameters are still useful')
+  assert.equal(entry.request.queryString.find((q) => q.name === 'token').value, '<redacted>')
+  assert.equal(entry.request.queryString.find((q) => q.name === 'store_id').value, '42')
+})
+
+test('redactUrl leaves a clean url alone', () => {
+  const clean = 'https://x.example/a/b?store_id=42&page=2'
+  assert.equal(redactUrl(clean), clean)
+  assert.equal(redactUrl('not a url'), 'not a url')
+  assert.ok(redactUrl('https://x/?session_id=abc') !== 'https://x/?session_id=abc')
 })
 
 test('buildHar produces HAR 1.2', () => {

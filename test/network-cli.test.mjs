@@ -27,7 +27,7 @@ test('network writes a HAR with credentials redacted and the failure recorded', 
     assert.ok(payload.redacted >= 3, `expected at least 3 redacted headers, got ${payload.redacted}`)
 
     const text = readFileSync(file, 'utf8')
-    for (const secret of ['secret-cookie', 'secret-token', 'session=secret', 's3cret', '"abc"']) {
+    for (const secret of ['secret-cookie', 'secret-token', 'session=secret', 's3cret', '"abc"', 'SECRETQUERY']) {
       assert.ok(!text.includes(secret), `the HAR leaked ${secret}`)
     }
 
@@ -36,8 +36,10 @@ test('network writes a HAR with credentials redacted and the failure recorded', 
     assert.equal(har.log.creator.name, 'herdr-browser')
 
     const first = har.log.entries[0]
-    assert.equal(first.request.url, 'https://example.com/')
-    assert.equal(first.request.queryString.length, 0)
+    assert.ok(!first.request.url.includes('SECRETQUERY'))
+    const query = Object.fromEntries(first.request.queryString.map((q) => [q.name, q.value]))
+    assert.equal(query.token, '<redacted>')
+    assert.equal(query.store_id, '7', 'data parameters are not collateral damage')
     for (const header of first.request.headers) {
       if (['cookie', 'authorization'].includes(header.name.toLowerCase())) {
         assert.equal(header.value, '<redacted>')

@@ -2,6 +2,17 @@
 
 All notable changes to herdr-browser. This project uses semantic versioning.
 
+## 1.2.1 (2026-11-06)
+
+### Fixed
+
+- **Query-string credentials reached the HAR in plain text.** An independent verification
+  of 1.2.0 found that `?token=...`, `?api_key=...` and `?session_id=...` were copied
+  verbatim into `request.url` and `request.queryString` while headers and bodies were
+  redacted. `redactUrl` now rewrites those parameters to `<redacted>` and leaves the rest
+  of the query intact (`?store_id=42` stays readable). Unchanged URLs are written byte
+  for byte.
+
 ## 1.2.0 (2026-11-06)
 
 Closes the gap with browser tools built on an extension + relay, without adopting their
