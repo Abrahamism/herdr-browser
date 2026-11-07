@@ -66,6 +66,16 @@ test('page commands refuse a tab that sits outside the list', async () => {
   })
 })
 
+test('network --url is a navigation too, so the list applies', async () => {
+  await withFakeCdp(async ({ home, state }) => {
+    await runCli(home, ['open', 'https://allowed.example/', '--allow-origin', 'allowed.example'])
+    const result = await runCli(home, ['network', '--url', 'https://blocked.example/api', '--file', 'x.har'])
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /blocked: https:\/\/blocked\.example\/api is outside the session allowlist/)
+    assert.ok(!state.navigations.includes('https://blocked.example/api'))
+  })
+})
+
 test('about:blank stays reachable even when a list is pinned', async () => {
   await withFakeCdp(async ({ home }) => {
     const result = await runCli(home, ['open', 'about:blank', '--allow-origin', 'allowed.example'])

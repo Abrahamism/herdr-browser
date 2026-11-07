@@ -17,6 +17,7 @@ import { BROWSER_NAMES, detectBrowsers, resolveBrowser } from './browsers.mjs'
 import { CDP } from './cdp.mjs'
 import { addExtension, extensionPaths, listExtensions, removeExtension } from './extensions.mjs'
 import { matchesOrigin, parseAllowlist } from './origins.mjs'
+import { buildHar, captureNetwork } from './har.mjs'
 import { loadConfig, profilePaths, readJson } from './home.mjs'
 import { ensureBrowser, probeVersion } from './launch.mjs'
 import { importProfile, profileSummary } from './profile.mjs'
@@ -185,6 +186,19 @@ async function resolveTarget(cdp, paths, flags, session) {
   throw new Error(`session "${session.session}" owns no tabs; run \`herdr-browser open <url>\` first${held}`)
 }
 
+/**
+ * The allowlist applies to every navigation this CLI performs, not just to `open`:
+ * `network --url` is a navigation too, and a second entry point that forgets the check
+ * is the same as having no check.
+ */
+function assertAllowedUrl(paths, sessionName, url) {
+  if (!url) return
+  const allowed = readSession(paths, sessionName).allowedOrigins ?? []
+  if (allowed.length && !matchesOrigin(url, allowed)) {
+    throw new Error(`blocked: ${url} is outside the session allowlist (run \`herdr-browser allow list\`)`)
+  }
+}
+
 async function pageHandle(cdp, paths, flags) {
   const session = readSession(paths, flags.__session)
   const tab = await resolveTarget(cdp, paths, flags, session)
@@ -239,6 +253,7 @@ Page control (agent):
   herdr-browser shot [file.png]
   herdr-browser wait --for <selector|text|url>=<value> [--timeout <ms|s|m>] [--page id] [--json]
   herdr-browser handoff [--message <text>] [--for <condition>] [--timeout <ms|s|m>] [--json]
+  herdr-browser network [--url <url>] [--idle <ms>] [--timeout <ms>] [--file <out.har>] [--json]
 
 Challenges:
   After a navigation, open reports Cloudflare, Akamai, DataDome, PerimeterX, Imperva,
@@ -322,9 +337,7 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
             ? setAllowlist(session, [...(session.allowedOrigins ?? []), ...parsedAllow]).allowedOrigins
             : (session.allowedOrigins ?? [])
           // Refuse before touching the browser: a denied open must not leave a tab behind.
-          if (url && effectiveAllow.length && !matchesOrigin(url, effectiveAllow)) {
-            throw new Error(`blocked: ${url} is outside the session allowlist (run \`herdr-browser allow list\`)`)
-          }
+          assertAllowedUrl(paths, settings.session, url)
           const tabs = await listTabs(cdp)
           const mine = ownedTabs(session, tabs)
           let targetId
@@ -739,6 +752,47 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
           cdp.close()
         }
         return 0
+      }
+
+      case 'network': {
+        const connection = await connectExisting(settings)
+        if (!connection) throw new Error('browser is not running')
+        const { cdp, paths } = connection
+        try {
+          const { tab, sessionId } = await pageHandle(cdp, paths, flags)
+          assertAllowedUrl(paths, settings.session, flags.url)
+          const idleMs = parseDuration(flags.idle, 800)
+          const timeoutMs = parseDuration(flags.timeout, 30_000)
+          if (idleMs <= 0) throw new Error('--idle must be greater than zero')
+          if (timeoutMs <= 0) throw new Error('--timeout must be greater than zero')
+          const url = flags.url
+          const navigateFn = url ? (u) => navigate(cdp, sessionId, u, { challengeWaitMs: null }) : undefined
+          const result = await captureNetwork(cdp, sessionId, {
+            navigate: navigateFn,
+            url,
+            idleMs,
+            timeoutMs
+          })
+          if (result.entries.length === 0) {
+            stderr.write('herdr-browser: no network requests captured\n')
+            return 1
+          }
+          const har = buildHar(result.entries, { version: PACKAGE_VERSION })
+          const outFile = resolve(flags.file ?? `herdr-browser-network-${Date.now()}.har`)
+          writeFileSync(outFile, JSON.stringify(har, null, 2))
+          const redacted = har.log.entries.flatMap((e) => [...e.request.headers, ...e.response.headers]).filter((h) => h.value === '<redacted>').length
+          const outputUrl = url ?? tab?.url ?? ''
+          if (flags.json) {
+            write(JSON.stringify({ file: outFile, entries: result.entries.length, redacted, idle: result.idle, waitedMs: result.waitedMs, url: outputUrl }))
+          } else {
+            write(`har: ${outFile}`)
+            write(`entries: ${result.entries.length}`)
+            write(`redacted: ${redacted} headers`)
+          }
+          return 0
+        } finally {
+          cdp.close()
+        }
       }
 
       case 'extensions': {

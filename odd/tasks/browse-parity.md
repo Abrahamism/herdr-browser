@@ -4,7 +4,7 @@ feature: browse-parity
 estatus: en-progreso
 fecha_creacion: 2026-11-06
 actualizado: 2026-11-06
-siguiente: T5 — captura de red
+siguiente: T6 — TTL de pestañas
 modo: implementacion
 tags: [herdr-browser, cdp, cli, seguridad, stealth, paridad]
 ---
@@ -62,7 +62,7 @@ tiene sentido con su arquitectura de extensión + relay. Una por una, un commit 
 - [x] **T2** — Detección de retos (`src/challenge.mjs`, `navigate`, `--challenge-wait`). Version 1.0.2. Spec: S2, I3.
 - [x] **T3** — Stealth: sin `Runtime.enable`, refs por índice, cursor en shadow root cerrado, switch de launch. Version 1.0.3. Spec: S3, I4.
 - [x] **T4** — Allowlist por sesión (`src/origins.mjs`, `allow`, guardia de navegación). Version 1.0.4. Spec: S4, I5.
-- [ ] **T5** — Captura de red a HAR con redacción (`src/har.mjs`, comando `network`). Version 1.0.5. Spec: S5, I6.
+- [x] **T5** — Captura de red a HAR con redacción (`src/har.mjs`, comando `network`). Version 1.0.5. Spec: S5, I6.
 - [ ] **T6** — TTL de pestañas (`tabs cleanup`, `lastUsedAt`). Version 1.0.6. Spec: S6, I7.
 - [ ] **T7** — Release 1.2.0: README, `skills/herdr-browser/SKILL.md`, CHANGELOG y push. Spec: S7.
 

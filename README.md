@@ -189,6 +189,17 @@ La receta completa para reconstruirlo desde cero está en `RECIPE.md`.
 
 Límite honesto: un popup que sale de la lista se rechaza cuando el siguiente comando de página lo resuelve; no se cierra automáticamente, porque no hay proceso vigilante.
 
+## Captura de red (HAR)
+
+`network [--url <url>] [--idle <ms>] [--timeout <ms>] [--file <out.har>] [--json]` adjunta a la pestaña resuelta, opcionalmente navega, espera red ociosa y escribe un HAR 1.2 con `Authorization`, `Cookie`, `Set-Cookie` y otros headers sensibles redactados a `<redacted>`. Los cuerpos de respuesta no se almacenan.
+
+Límite honesto: la captura vive dentro de una sola invocación; no hay daemon que escuche entre comandos. El comando adjunta, opcionalmente navega, espera red ociosa y escribe el archivo.
+Segundo límite, medido y no supuesto: Chromium reporta cookies y `Authorization` en los eventos
+*extra-info* del protocolo, que este comando **no** recolecta. Verificado con un servidor local que
+recibió la cookie y la devolvió en el cuerpo: la credencial viajó en la petición y el HAR no guardó
+ni su valor ni su nombre. La redacción de headers sí está cubierta por tests para el caso en que el
+header llegue en el evento principal.
+
 ## Límites
 
 - Sin Web Store (solo extensiones desempaquetadas).
