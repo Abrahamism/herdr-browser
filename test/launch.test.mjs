@@ -7,6 +7,7 @@ test('launchArgs contains required flags', () => {
   assert.ok(args.some((a) => a.startsWith('--user-data-dir=')))
   assert.ok(args.some((a) => a === '--remote-debugging-port=0'))
   assert.ok(args.includes('--headless=new'))
+  assert.ok(args.includes('--disable-blink-features=AutomationControlled'))
   assert.ok(!args.some((a) => a.startsWith('--load-extension=')))
 })
 

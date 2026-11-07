@@ -4,7 +4,24 @@ Navegador Chromium real (Brave por defecto) con control por CDP y soporte de ext
 
 ## Qué es
 
-herdr-browser lanza un navegador Chromium en su propia ventana con un perfil dedicado y un endpoint de depuración (CDP). El agente controla la pestaña por CDP (clic, escritura, teclas, desplazamiento, capturas) sin mover el puntero físico ni robar el mouse del usuario. Se integra a herdr como plugin: acciones y un panel de pestañas.
+herdr-browser lanza un navegador Chromium en su propia ventana con un perfil dedicado y un endpoint de depuración (CDP). El agente controla la pestaña por CDP (clic, escritura, teclas, desplazamiento, capturas) sin mover el puntero físico ni robar el mouse del usuario. Se integra a herdr-app con el mod `browser-tabs`, que lista las pestañas en un panel.
+
+## Versión 1.2.0
+
+Lo que trae esta entrega. Cada punto tiene su sección más abajo.
+
+| Mejora | Cómo se usa | Qué resuelve |
+|---|---|---|
+| Esperar sin polling | `wait --for ...` | Bloquea hasta que la página llega al estado pedido; un timeout sale con código 1, nunca como éxito |
+| Ceder el navegador | `handoff --message ...` | Login, 2FA o CAPTCHA: lo hace la persona y el agente sigue solo |
+| Retos anti-bot | `open --challenge-wait` | Reporta Cloudflare, Akamai, DataDome, PerimeterX, Imperva, AWS WAF y CAPTCHA en vez de fingir que la página cargó |
+| Menos detectable | automático | Sin `Runtime.enable`, sin refs en el DOM, cursor en shadow root cerrado, `navigator.webdriver` en false |
+| Allowlist por sesión | `allow`, `open --allow-origin` | El agente no sale de los dominios autorizados; un redirect fuera de la lista se rechaza |
+| Captura de red | `network --url ... --file x.har` | HAR 1.2 con credenciales redactadas y sin cuerpos de respuesta |
+| Limpieza de pestañas | `tabs cleanup --idle 10m` | Cierra lo ocioso; nunca una pestaña que abrió una persona |
+
+La versión instalada se consulta con `herdr-browser --version`; el detalle completo está en
+`CHANGELOG.md`.
 
 ## Demo
 
@@ -82,6 +99,8 @@ herdr-browser snapshot --session agent-b
   trabajando; cuando no queda ninguna pestaña en el perfil, cierra el navegador como siempre.
   `stop --all` cierra el navegador compartido.
 
+TTL de pestañas: `tabs cleanup [--idle <ms|s|m>] [--all] [--dry-run] [--json]` cierra las pestañas inactivas (10 minutos por defecto). `--all` alcanza las de todas las sesiones. Una pestaña que nadie posee nunca se cierra: pertenece al humano. Cualquier comando que resuelva una pestaña reinicia su temporizador (`lastUsedAt`), así que una pestaña en uso no se barre.
+
 Dos procesos con el mismo nombre de sesión son, a propósito, un solo cliente: comparten pestaña
 activa y no coordinan escrituras entre sí. Un agente, una sesión.
 
@@ -91,6 +110,44 @@ Si querés aislamiento total, cookies incluidas, cada agente con su propio perfi
 ## Control por el agente
 
 El agente usa `snapshot` para obtener refs (`e1`, `e2`…) y luego `click`, `fill`, `type`, `key`, `scroll`, `get`, `eval` y `shot`. Se dibuja un cursor dentro de la página para que el usuario vea dónde actúa.
+
+Los refs no se guardan como atributos en el DOM: `e5` significa "el quinto elemento del mismo recorrido de `snapshot`, con el mismo filtro de visibilidad". Se recalculan al resolver, así que sobreviven entre invocaciones del CLI (incluso en procesos distintos) sin tocar la página.
+
+### Esperar y ceder el control a la persona
+
+```bash
+herdr-browser wait --for selector=#tablero --timeout 20s
+herdr-browser wait --for text="Sesión iniciada" --json
+herdr-browser handoff --message "Entra con tu SSO y avísame"
+herdr-browser handoff --for selector=#inicio --timeout 5m
+```
+
+`wait` consulta la página cada 200 ms y responde `wait: ok after <ms>` cuando la condición se
+cumple. Un `selector=` cuenta como cumplido solo si el elemento se dibuja (no `display:none`), y
+un vencimiento sale con **código 1**: un timeout nunca se reporta como éxito.
+
+`handoff` imprime el mensaje para la persona y bloquea hasta que la página navegue o se cumpla
+`--for`. Es la forma de resolver un login, un 2FA o un CAPTCHA en el perfil dedicado sin que el
+agente adivine: no hay tarjeta ni extensión, es el mismo proceso esperando.
+
+Los tiempos aceptan `500` (milisegundos), `30s` o `5m`.
+
+### Retos anti-bot
+
+Después de cada navegación, `open` revisa si lo que cargó es un reto (Cloudflare, Akamai,
+DataDome, PerimeterX, Imperva, AWS WAF) o una página con un CAPTCHA montado, y espera a que el
+navegador lo resuelva solo:
+
+```bash
+herdr-browser open https://sitio-protegido.example --challenge-wait 30s
+```
+
+La detección exige **dos señales** (título y texto) en los intersticiales duros, para no confundir
+una nota sobre Cloudflare con un bloqueo; un widget de CAPTCHA se detecta por su marca en el DOM y
+basta con uno. Nunca se resuelve nada: si el reto sobrevive al plazo, `open` imprime
+`challenge: cloudflare — still there after 15s; run \`herdr-browser handoff\`` y el agente sabe que no
+está viendo la página que pidió. `--challenge-wait 0` reporta sin esperar y
+`HERDR_BROWSER_CHALLENGE_WAIT_MS` fija el valor por defecto.
 
 ## Extensiones
 
@@ -116,7 +173,10 @@ Copia `Local State`, cookies, datos de login y directorios de extensiones. Riesg
 
 ## Integración herdr
 
-Plugin con acción de apertura y panel de pestañas en un pane (`herdr-plugin.toml`). Incluye `open-from-herdr`, `open-panel` y `panel`.
+Retirada. El plugin clásico de herdr (`herdr-plugin.toml`, `min_herdr_version = "0.9.0"`) y sus
+entrypoints (`open-from-herdr`, `open-panel`, `panel`) se eliminaron el 2026-11-03 junto con
+herdr 0.9.5. La app vigente es herdr-app y su forma de integración es el mod `browser-tabs`
+de la sección siguiente; `bin/herdr-browser.mjs` es el único entrypoint.
 
 ## Mod de herdr: pestañas del navegador
 
@@ -134,12 +194,38 @@ herdr-app do pane.split --direction right --mod browser-tabs
 
 La receta completa para reconstruirlo desde cero está en `RECIPE.md`.
 
+## Allowlist por sesión
+
+`open --allow-origin <patrones>` fija una lista de orígenes permitidos en el archivo de la sesión. `allow list|add|remove|clear` la administra. Reglas de matching:
+
+- `about:blank` siempre se permite.
+- Un patrón sin puerto vale para cualquier puerto; con puerto debe coincidir exacto.
+- `example.com` coincide solo con `example.com` (no subdominios).
+- `*.example.com` coincide con cualquier subdominio y nunca con el apex.
+- Un patrón con esquema (`https://example.com`) exige el mismo esquema y host (puerto por defecto).
+- `file://` solo se permite si el patrón es literalmente `file://`.
+- Una URL que no se puede parsear nunca coincide.
+
+Límite honesto: un popup que sale de la lista se rechaza cuando el siguiente comando de página lo resuelve; no se cierra automáticamente, porque no hay proceso vigilante.
+
+## Captura de red (HAR)
+
+`network [--url <url>] [--idle <ms>] [--timeout <ms>] [--file <out.har>] [--json]` adjunta a la pestaña resuelta, opcionalmente navega, espera red ociosa y escribe un HAR 1.2 con `Authorization`, `Cookie`, `Set-Cookie` y otros headers sensibles redactados a `<redacted>`. También se redactan los parámetros sensibles de la query string (`?token=…`, `?api_key=…`, `?session_id=…`) y se dejan intactos los que son datos (`?store_id=42`). Los cuerpos de respuesta no se almacenan.
+
+Límite honesto: la captura vive dentro de una sola invocación; no hay daemon que escuche entre comandos. El comando adjunta, opcionalmente navega, espera red ociosa y escribe el archivo.
+Segundo límite, medido y no supuesto: Chromium reporta cookies y `Authorization` en los eventos
+*extra-info* del protocolo, que este comando **no** recolecta. Verificado con un servidor local que
+recibió la cookie y la devolvió en el cuerpo: la credencial viajó en la petición y el HAR no guardó
+ni su valor ni su nombre. La redacción de headers sí está cubierta por tests para el caso en que el
+header llegue en el evento principal.
+
 ## Límites
 
 - Sin Web Store (solo extensiones desempaquetadas).
 - Los iframes out-of-process se leen y se clican: sus refs llevan prefijo (`f1e12`). `eval` y `get` siguen operando sobre el documento principal.
 - Sin input del sistema operativo (todo por CDP).
 - El puntero físico no se mueve.
+- Si el DOM cambia entre `snapshot` y `click`/`fill`, un ref puede apuntar a otro elemento: volvé a correr `snapshot` antes de actuar.
 
 ## Verificación
 

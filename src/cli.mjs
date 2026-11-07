@@ -1,4 +1,4 @@
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   click,
@@ -16,6 +16,8 @@ import {
 import { BROWSER_NAMES, detectBrowsers, resolveBrowser } from './browsers.mjs'
 import { CDP } from './cdp.mjs'
 import { addExtension, extensionPaths, listExtensions, removeExtension } from './extensions.mjs'
+import { matchesOrigin, parseAllowlist } from './origins.mjs'
+import { buildHar, captureNetwork } from './har.mjs'
 import { loadConfig, profilePaths, readJson } from './home.mjs'
 import { ensureBrowser, probeVersion } from './launch.mjs'
 import { importProfile, profileSummary } from './profile.mjs'
@@ -24,6 +26,7 @@ import {
   annotateTabs,
   forgetTab,
   hasTab,
+  idleTabs,
   listSessions,
   ownedTabs,
   ownersByTarget,
@@ -31,9 +34,14 @@ import {
   recordTab,
   removeSession,
   resolveSession,
+  setAllowlist,
+  touchTab,
   writeSession
 } from './sessions.mjs'
 import { activateTab, closeTab, listTabs, openTab, resolveTab } from './tabs.mjs'
+import { describeCondition, handoff, parseDuration, parseWaitSpec, waitForCondition } from './wait.mjs'
+
+const PACKAGE_VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
 
 const BOOLEAN_FLAGS = new Set([
   'json',
@@ -61,8 +69,11 @@ export function parseArgs(argv) {
       positional.push(arg)
       continue
     }
-    const [rawKey, inline] = arg.slice(2).split('=')
-    const key = rawKey
+    // Only the first "=" separates the flag from its value: --for url=https://x keeps its url.
+    const body = arg.slice(2)
+    const equals = body.indexOf('=')
+    const key = equals === -1 ? body : body.slice(0, equals)
+    const inline = equals === -1 ? undefined : body.slice(equals + 1)
     if (inline !== undefined) {
       flags[key] = inline
     } else if (BOOLEAN_FLAGS.has(key) || !argv[index + 1] || argv[index + 1].startsWith('--')) {
@@ -87,6 +98,11 @@ export function resolveSettings(flags, env = process.env, plat = process.platfor
     session: resolveSession(flags, env),
     exe: flags.exe ?? config.exe ?? null,
     cursor: flags['no-cursor'] ? false : config.cursor !== false,
+    // A challenge the browser clears by itself costs time, not permission: wait by default.
+    challengeWait: parseDuration(
+      flags['challenge-wait'] ?? env.HERDR_BROWSER_CHALLENGE_WAIT_MS,
+      15_000
+    ),
     headless: Boolean(flags.headless),
     env,
     plat
@@ -172,9 +188,29 @@ async function resolveTarget(cdp, paths, flags, session) {
   throw new Error(`session "${session.session}" owns no tabs; run \`herdr-browser open <url>\` first${held}`)
 }
 
+/**
+ * The allowlist applies to every navigation this CLI performs, not just to `open`:
+ * `network --url` is a navigation too, and a second entry point that forgets the check
+ * is the same as having no check.
+ */
+function assertAllowedUrl(paths, sessionName, url) {
+  if (!url) return
+  const allowed = readSession(paths, sessionName).allowedOrigins ?? []
+  if (allowed.length && !matchesOrigin(url, allowed)) {
+    throw new Error(`blocked: ${url} is outside the session allowlist (run \`herdr-browser allow list\`)`)
+  }
+}
+
 async function pageHandle(cdp, paths, flags) {
-  const tab = await resolveTarget(cdp, paths, flags, readSession(paths, flags.__session))
+  const session = readSession(paths, flags.__session)
+  const tab = await resolveTarget(cdp, paths, flags, session)
+  const allowed = session.allowedOrigins ?? []
+  if (allowed.length && !matchesOrigin(tab.url ?? '', allowed)) {
+    throw new Error(`blocked: ${tab.url} is outside the session allowlist`)
+  }
   const sessionId = await preparePage(cdp, tab.id, { cursor: flags.__cursor })
+  const touched = touchTab(session, tab.id)
+  if (touched !== session) writeSession(paths, touched)
   return { tab, sessionId }
 }
 
@@ -201,8 +237,10 @@ const HELP = `herdr-browser — a real Chromium browser (Brave by default) with 
 
 Usage:
   herdr-browser browsers
-  herdr-browser open [url] [--new | --reuse] [--browser brave|chrome|edge|chromium] [--profile name]
+  herdr-browser open [url] [--new | --reuse] [--browser brave|chrome|edge|chromium] [--profile name] [--allow-origin <patterns>]
+  herdr-browser allow [list|add <patterns>|remove <patterns>|clear]
   herdr-browser tabs [--json]
+  herdr-browser tabs cleanup [--idle <ms|s|m>] [--all] [--dry-run] [--json]
   herdr-browser activate <id|index>
   herdr-browser close <id|index>
   herdr-browser status [--json]
@@ -218,6 +256,23 @@ Page control (agent):
   herdr-browser get [--what url|title|text|html]
   herdr-browser eval <expression>
   herdr-browser shot [file.png]
+  herdr-browser wait --for <selector|text|url>=<value> [--timeout <ms|s|m>] [--page id] [--json]
+  herdr-browser handoff [--message <text>] [--for <condition>] [--timeout <ms|s|m>] [--json]
+  herdr-browser network [--url <url>] [--idle <ms>] [--timeout <ms>] [--file <out.har>] [--json]
+
+Challenges:
+  After a navigation, open reports Cloudflare, Akamai, DataDome, PerimeterX, Imperva,
+  AWS WAF and CAPTCHA interstitials, and waits --challenge-wait (15s by default,
+  HERDR_BROWSER_CHALLENGE_WAIT_MS) for the browser to clear them. It never solves one:
+  a surviving challenge is reported and left to a person.
+
+Waiting and handoff:
+  wait polls the page and prints "wait: ok after <ms>" when the condition holds; a
+  selector only counts when the element is rendered. A timeout exits with code 1, so a
+  caller can never mistake an unmet condition for success.
+  handoff prints a message for the person and blocks until the page navigates or the
+  --for condition holds: it is how a login, a 2FA prompt or a CAPTCHA is resolved in the
+  dedicated profile. No card, no extension, no daemon - the same process keeps waiting.
 
 Extensions and profile:
   herdr-browser extensions [list|add <dir>|remove <dir>]
@@ -232,6 +287,10 @@ Session:
   claimed (opened by hand or by an older release) are still usable.
   stop closes only the caller's tabs; --all closes the shared browser.
 
+  Tab TTL: tabs cleanup closes idle tabs (default 10m) for the caller; --all reaches
+  every session. A tab nobody owns is never closed: it belongs to the human. Any command
+  that resolves a tab resets its timer, so a tab in active use is never swept.
+
 Global flags:
   --browser <name>   engine to launch (default: brave)
   --profile <name>   dedicated profile (default: default)
@@ -239,6 +298,8 @@ Global flags:
   --page <id>        address a tab explicitly, even one another session opened
   --exe <path>       explicit browser executable
   --no-cursor        do not draw the agent cursor inside the page
+  --challenge-wait <ms|s|m>  how long to wait out a bot challenge after navigating (default: 15s)
+  --allow-origin <patterns>  comma/space separated origins pinned to this session
   --json             machine-readable output where supported
   --headless         launch headless (useful for tests)
 `
@@ -248,12 +309,13 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
   const { flags, positional } = parseArgs(argv)
   const command = positional.shift()
 
-  if (flags.help || command === 'help' || command === undefined) {
-    stdout.write(HELP)
+  // --version wins over the help text: without this order it never printed a version.
+  if (flags.version || command === '--version') {
+    write(`herdr-browser ${PACKAGE_VERSION}`)
     return 0
   }
-  if (flags.version || command === '--version') {
-    write('herdr-browser 0.1.0')
+  if (flags.help || command === 'help' || command === undefined) {
+    stdout.write(HELP)
     return 0
   }
 
@@ -275,9 +337,16 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
 
       case 'open': {
         const url = positional[0]
+        const allowOriginFlag = flags['allow-origin']
+        const parsedAllow = allowOriginFlag ? parseAllowlist(allowOriginFlag) : []
         const { cdp, paths } = await connectOrLaunch(settings)
         try {
           const session = readSession(paths, settings.session)
+          const effectiveAllow = parsedAllow.length
+            ? setAllowlist(session, [...(session.allowedOrigins ?? []), ...parsedAllow]).allowedOrigins
+            : (session.allowedOrigins ?? [])
+          // Refuse before touching the browser: a denied open must not leave a tab behind.
+          assertAllowedUrl(paths, settings.session, url)
           const tabs = await listTabs(cdp)
           const mine = ownedTabs(session, tabs)
           let targetId
@@ -299,17 +368,37 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
             targetId = await openTab(cdp, 'about:blank')
           }
           const sessionId = await preparePage(cdp, targetId, { cursor: settings.cursor })
-          if (url) await navigate(cdp, sessionId, url)
+          let navigation = { challenge: null, cleared: false, waitedMs: 0 }
+          if (url) {
+            navigation = await navigate(cdp, sessionId, url, { challengeWaitMs: settings.challengeWait })
+          }
+          if (url && effectiveAllow.length) {
+            // A redirect is a navigation too: leaving the list is refused, not noted for later.
+            const landed = (await listTabs(cdp)).find((item) => item.id === targetId)?.url ?? ''
+            if (!matchesOrigin(landed, effectiveAllow)) {
+              await navigate(cdp, sessionId, 'about:blank', { challengeWaitMs: null })
+              throw new Error(`blocked: ${landed} is outside the session allowlist (redirected out of it)`)
+            }
+          }
           await activateTab(cdp, targetId)
           const [tab] = (await listTabs(cdp)).filter((item) => item.id === targetId)
-          writeSession(paths, recordTab(session, targetId, { title: tab?.title, url: tab?.url }))
+          writeSession(paths, setAllowlist(recordTab(session, targetId, { title: tab?.title, url: tab?.url }), effectiveAllow))
+          const challenge = navigation.challenge
+            ? {
+                kind: navigation.challenge.kind,
+                signal: navigation.challenge.signal,
+                cleared: navigation.cleared,
+                waitedMs: navigation.waitedMs
+              }
+            : null
           if (flags.json) {
             write(
               JSON.stringify({
                 id: targetId,
                 url: tab?.url ?? url ?? 'about:blank',
                 title: tab?.title,
-                session: session.session
+                session: session.session,
+                challenge
               })
             )
           } else {
@@ -317,6 +406,14 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
             write(`url:  ${tab?.url ?? url ?? 'about:blank'}`)
             write(`tab:  ${targetId}`)
             write(`session: ${session.session}`)
+            if (challenge) {
+              const state = navigation.cleared
+                ? `cleared after ${navigation.waitedMs}ms`
+                : navigation.waitedMs === 0
+                  ? 'reported without waiting'
+                  : `still there after ${navigation.waitedMs}ms; run \`herdr-browser handoff\` or solve it by hand`
+              write(`challenge: ${challenge.kind} (${challenge.signal}) — ${state}`)
+            }
           }
         } finally {
           cdp.close()
@@ -325,6 +422,66 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
       }
 
       case 'tabs': {
+        if (positional[0] === 'cleanup') {
+          const idleMs = parseDuration(flags.idle, 10 * 60 * 1000)
+          if (idleMs < 1000) throw new Error('--idle must be at least 1000ms (a zero budget would close everything)')
+          const dryRun = !!flags['dry-run']
+          const json = !!flags.json
+          const all = !!flags.all
+          const connection = await connectExisting(settings)
+          if (!connection) throw new Error('browser is not running; run `herdr-browser open <url>` first')
+          const { cdp, paths } = connection
+          try {
+            const liveTabs = await listTabs(cdp)
+            const sessions = all ? listSessions(paths) : [readSession(paths, settings.session)]
+            const now = Date.now()
+            const closedIds = new Set()
+            const closed = []
+            const pendingWrites = []
+            for (const session of sessions) {
+              const eligible = idleTabs(session, liveTabs, { idleMs, now })
+                .map((tab) => tab.id)
+                .filter((id) => !closedIds.has(id))
+              if (!eligible.length) continue
+              // prune from this session file
+              let next = session
+              for (const id of eligible) {
+                const live = liveTabs.find((tab) => tab.id === id)
+                closedIds.add(id)
+                closed.push({ id, url: live?.url ?? null, session: session.session, idleMs })
+                next = forgetTab(next, id)
+              }
+              pendingWrites.push(next)
+            }
+            // Close first, then forget. Pruning before closing leaves an orphan nobody owns,
+            // and an unowned tab is never swept again by design.
+            if (!dryRun) {
+              for (const entry of closed) {
+                try {
+                  await closeTab(cdp, entry.id)
+                } catch {
+                  // Already gone: forgetting it is still the right outcome.
+                }
+              }
+              for (const next of pendingWrites) writeSession(paths, next)
+            }
+            const kept = dryRun ? liveTabs.length - closed.length : (await listTabs(cdp)).length
+            if (json) {
+              write(JSON.stringify({ closed, kept }))
+            } else if (dryRun) {
+              if (closed.length === 0) write('would close: 0 tab(s)')
+              else {
+                write(`would close: ${closed.length} tab(s)`)
+                for (const entry of closed) write(`would close: ${entry.id}	${entry.url ?? ''}`)
+              }
+            } else {
+              write(`closed: ${closed.length} tab(s)`)
+            }
+          } finally {
+            cdp.close()
+          }
+          return 0
+        }
         const connection = await connectExisting(settings)
         if (!connection) throw new Error('browser is not running; run `herdr-browser open <url>` first')
         const { cdp, paths } = connection
@@ -453,6 +610,73 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
         write(`closed: ${closed} tab${closed === 1 ? '' : 's'}`)
         write(`browser: running (${remaining.length} tab${remaining.length === 1 ? '' : 's'} left)`)
         return 0
+      }
+
+      case 'wait': {
+        const condition = parseWaitSpec(flags.for ?? positional[0])
+        const timeoutMs = parseDuration(flags.timeout, 30_000)
+        const connection = await connectExisting(settings)
+        if (!connection) throw new Error('browser is not running')
+        const { cdp, paths } = connection
+        try {
+          const { sessionId } = await pageHandle(cdp, paths, flags)
+          const result = await waitForCondition(cdp, sessionId, condition, {
+            timeoutMs,
+            evaluate: (expression) => evalInPage(cdp, sessionId, expression)
+          })
+          if (flags.json) {
+            write(JSON.stringify(result))
+          } else if (result.ok) {
+            write(`wait: ok after ${result.waitedMs}ms`)
+            write(`url:  ${result.url ?? ''}`)
+          } else {
+            stderr.write(
+              `herdr-browser: wait timed out after ${timeoutMs}ms (${describeCondition(condition)}: ${result.detail ?? 'no answer'})\n`
+            )
+          }
+          return result.ok ? 0 : 1
+        } finally {
+          cdp.close()
+        }
+      }
+
+      case 'handoff': {
+        const condition = flags.for ? parseWaitSpec(flags.for) : null
+        const timeoutMs = parseDuration(flags.timeout, 300_000)
+        const connection = await connectExisting(settings)
+        if (!connection) throw new Error('browser is not running')
+        const { cdp, paths } = connection
+        try {
+          const { tab, sessionId } = await pageHandle(cdp, paths, flags)
+          const message =
+            typeof flags.message === 'string'
+              ? flags.message
+              : 'do the human step in the browser (login, 2FA, confirmation)'
+          if (!flags.json) {
+            write(`human: ${message}`)
+            write(`waiting: ${describeCondition(condition)}`)
+            write(`timeout: ${Math.round(timeoutMs / 1000)}s`)
+          }
+          const result = await handoff(cdp, sessionId, {
+            condition,
+            message,
+            timeoutMs,
+            evaluate: (expression) => evalInPage(cdp, sessionId, expression)
+          })
+          if (flags.json) {
+            write(JSON.stringify({ tab, ...result }))
+          } else if (result.ok) {
+            write(`resumed after ${result.waitedMs}ms`)
+            write(`url:  ${result.url ?? ''}`)
+          } else {
+            stderr.write(
+              `herdr-browser: handoff timed out after ${timeoutMs}ms (${result.detail ?? 'no answer'})\n`
+            )
+          }
+          return result.ok ? 0 : 1
+        } finally {
+          cdp.close()
+        }
       }
 
       case 'snapshot': {
@@ -599,6 +823,47 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
         return 0
       }
 
+      case 'network': {
+        const connection = await connectExisting(settings)
+        if (!connection) throw new Error('browser is not running')
+        const { cdp, paths } = connection
+        try {
+          const { tab, sessionId } = await pageHandle(cdp, paths, flags)
+          assertAllowedUrl(paths, settings.session, flags.url)
+          const idleMs = parseDuration(flags.idle, 800)
+          const timeoutMs = parseDuration(flags.timeout, 30_000)
+          if (idleMs <= 0) throw new Error('--idle must be greater than zero')
+          if (timeoutMs <= 0) throw new Error('--timeout must be greater than zero')
+          const url = flags.url
+          const navigateFn = url ? (u) => navigate(cdp, sessionId, u, { challengeWaitMs: null }) : undefined
+          const result = await captureNetwork(cdp, sessionId, {
+            navigate: navigateFn,
+            url,
+            idleMs,
+            timeoutMs
+          })
+          if (result.entries.length === 0) {
+            stderr.write('herdr-browser: no network requests captured\n')
+            return 1
+          }
+          const har = buildHar(result.entries, { version: PACKAGE_VERSION })
+          const outFile = resolve(flags.file ?? `herdr-browser-network-${Date.now()}.har`)
+          writeFileSync(outFile, JSON.stringify(har, null, 2))
+          const redacted = har.log.entries.flatMap((e) => [...e.request.headers, ...e.response.headers]).filter((h) => h.value === '<redacted>').length
+          const outputUrl = url ?? tab?.url ?? ''
+          if (flags.json) {
+            write(JSON.stringify({ file: outFile, entries: result.entries.length, redacted, idle: result.idle, waitedMs: result.waitedMs, url: outputUrl }))
+          } else {
+            write(`har: ${outFile}`)
+            write(`entries: ${result.entries.length}`)
+            write(`redacted: ${redacted} headers`)
+          }
+          return 0
+        } finally {
+          cdp.close()
+        }
+      }
+
       case 'extensions': {
         const action = positional[0] ?? 'list'
         if (action === 'list') {
@@ -686,6 +951,49 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
         write(`extensions: ${extensionPaths(settings.profile, settings.env, settings.plat).length}`)
         if (connection) connection.cdp.close()
         return 0
+      }
+
+      case 'allow': {
+        const action = positional[0] ?? 'list'
+        const paths = pathsFor(settings)
+        if (action === 'list') {
+          const session = readSession(paths, settings.session)
+          const list = session.allowedOrigins ?? []
+          if (!list.length) {
+            write('allowlist: none (no restriction)')
+          } else {
+            write(`allowlist: ${list.join(', ')}`)
+          }
+          return 0
+        }
+        if (action === 'add') {
+          const patterns = parseAllowlist(positional.slice(1).join(' '))
+          if (!patterns.length) throw new Error('usage: herdr-browser allow add <patterns>')
+          const session = readSession(paths, settings.session)
+          const merged = setAllowlist(session, [...(session.allowedOrigins ?? []), ...patterns]).allowedOrigins
+          writeSession(paths, setAllowlist(session, merged))
+          write(`allowlist: ${merged.join(', ')}`)
+          return 0
+        }
+        if (action === 'remove') {
+          const patterns = parseAllowlist(positional.slice(1).join(' '))
+          if (!patterns.length) throw new Error('usage: herdr-browser allow remove <patterns>')
+          const session = readSession(paths, settings.session)
+          const current = session.allowedOrigins ?? []
+          const removeSet = new Set(patterns)
+          const next = current.filter((p) => !removeSet.has(p))
+          writeSession(paths, setAllowlist(session, next))
+          if (!next.length) write('allowlist: none (no restriction)')
+          else write(`allowlist: ${next.join(', ')}`)
+          return 0
+        }
+        if (action === 'clear') {
+          const session = readSession(paths, settings.session)
+          writeSession(paths, setAllowlist(session, []))
+          write('allowlist: none (no restriction)')
+          return 0
+        }
+        throw new Error(`unknown allow action "${action}" (use list, add, remove or clear)`)
       }
 
       default:

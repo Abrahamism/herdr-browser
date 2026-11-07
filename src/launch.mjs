@@ -15,6 +15,7 @@ export function launchArgs({ userDataDir, port = 0, extensions = [], headless = 
     `--remote-debugging-port=${port}`,
     '--no-first-run',
     '--no-default-browser-check',
+    '--disable-blink-features=AutomationControlled',
     // Required by the CDP Extensions domain on Chromium 136+; ignored elsewhere.
     '--enable-unsafe-extension-debugging'
   ]

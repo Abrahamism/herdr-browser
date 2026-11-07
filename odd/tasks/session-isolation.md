@@ -109,7 +109,7 @@ de cliente por invocación y propiedad explícita de pestañas, sin depender de 
 - **L1** (2026-11-06) — Pedido original, literal: "Hay que ponerse a trabajar en el issue que
   levantamos para el herdr brwser https://github.com/Abrahamism/herdr-browser/issues/"
 - **L2** (2026-11-06) — Alcance: el issue es la especificación (S1-S7 salen de su cuerpo verbatim);
-  las interpretaciones I1-I7 son del implementador y quedan a revisión de Ismael.
+  las interpretaciones I1-I7 son del implementador y quedan a revisión del dueño del repo.
 - **L3** (2026-11-06) — Estado previo del repo: rama `main`, con cambios sin commitear de la sesión
   anterior (borrado en stage de `bin/panel.mjs`, `bin/open-panel.mjs`, `bin/open-from-herdr.mjs`,
   `herdr-plugin.toml` y edición de README sobre la retirada del plugin). Se dejan intactos: los
@@ -128,4 +128,4 @@ de cliente por invocación y propiedad explícita de pestañas, sin depender de 
   se hicieron cherry-pick sobre `origin/main` en una rama nueva con el mismo nombre, resolviendo un
   conflicto de una línea en `skills/herdr-browser/SKILL.md`. La verificación se repitió sobre esa
   rama: `npm test` 44 pass / 0 fail / 1 skip y e2e 1 pass. La historia local vieja quedó en la
-  rama `backup/session-isolation`, sin pushear y a la espera de que Ismael decida qué hacer con ella.
+  rama `backup/session-isolation`, sin pushear y a la espera de que el dueño del repo decida qué hacer con ella.

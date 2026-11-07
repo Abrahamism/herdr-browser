@@ -30,6 +30,7 @@ export function makeServer({ targets = DEFAULT_TARGETS } = {}) {
     created: [],
     closed: [],
     activated: [],
+    navigations: [],
     browserClosed: false,
     nextId: targets.length + 1
   }
@@ -174,11 +175,19 @@ function handleMsg(msg, socket, state) {
       break
     case 'Runtime.evaluate': {
       const expr = params?.expression ?? ''
-      if (expr.includes('__hbPos')) {
+      if (expr.includes('__hbChallenge')) {
+        state.challengeCalls = (state.challengeCalls ?? 0) + 1
+        const answer = state.challengeResult ?? { title: 'Fake', text: '', markers: {} }
+        result = { result: { value: { url: 'http://fake/', ...answer } } }
+      } else if (expr.includes('__hbWait')) {
+        state.waitCalls = (state.waitCalls ?? 0) + 1
+        const answer = state.waitResult ?? { ok: true, detail: 'the condition holds' }
+        result = { result: { value: { url: 'http://fake/', title: 'Fake', ...answer } } }
+      } else if (expr.includes('data-hb-c')) {
         result = { result: { value: { x: 0, y: 0 } } }
       } else if (expr.includes('rect.left + rect.width / 2')) {
         result = { result: { value: { ok: true, x: 10, y: 20 } } }
-      } else if (expr.includes('MAX_ITEMS') || expr.includes('data-herdr-browser-ref')) {
+      } else if (expr.includes('MAX_ITEMS')) {
         result = { result: { value: { title: 'Fake', url: 'http://fake/', items: [{ ref: 'e1', role: 'button', name: 'Go' }] } } }
       } else if (expr.includes('document.readyState')) {
         result = { result: { value: 'complete' } }
@@ -192,6 +201,10 @@ function handleMsg(msg, socket, state) {
     case 'Input.dispatchMouseEvent':
       state.dispatches.push({ type: params.type, x: params.x, y: params.y })
       result = {}
+      break
+    case 'Page.navigate':
+      state.navigations.push(params?.url ?? '')
+      result = { frameId: 'F0' }
       break
     case 'Page.enable':
     case 'Runtime.enable':
@@ -210,6 +223,10 @@ function handleMsg(msg, socket, state) {
     case 'Browser.close':
       state.browserClosed = true
       result = {}
+      break
+    case 'Network.enable':
+      result = {}
+      scheduleNetworkEvents(socket, state)
       break
     default:
       result = {}
@@ -233,4 +250,95 @@ export function runCli(home, args, env = {}) {
     })
     child.on('close', (code) => resolve({ status: code ?? 0, stdout, stderr }))
   })
+}
+
+function networkPlan(state) {
+  if (Array.isArray(state.networkPlan)) return state.networkPlan
+  if (Array.isArray(state.networkRequests)) return state.networkRequests
+  if (Array.isArray(state.networkScenarios)) return state.networkScenarios
+  if (Array.isArray(state.requests)) return state.requests
+  return [
+    {
+      requestId: 'r1',
+      request: {
+        url: 'https://example.com/?token=SECRETQUERY&store_id=7',
+        method: 'GET',
+        headers: { Cookie: 'secret-cookie', Authorization: 'Bearer secret-token' }
+      },
+      response: {
+        status: 200,
+        statusText: 'OK',
+        headers: { 'Set-Cookie': 'session=secret', 'Content-Type': 'text/html' },
+        mimeType: 'text/html'
+      }
+    },
+    {
+      requestId: 'r2',
+      request: { url: 'https://example.com/api', method: 'POST', postData: '{"password":"s3cret","token":"abc"}', postDataMimeType: 'application/json' },
+      fail: true,
+      errorText: 'net::ERR_FAILED'
+    }
+  ]
+}
+
+function scheduleNetworkEvents(socket, state) {
+  const plan = networkPlan(state)
+  let t = 0
+  for (const item of plan) {
+    const rid = item.requestId ?? `r${Math.random().toString(16).slice(2)}`
+    const req = item.request ?? item
+    const url = req.url ?? 'https://example.com/'
+    const method = req.method ?? 'GET'
+    const headers = req.headers ?? {}
+    const postData = req.postData
+    const postDataMimeType = req.postDataMimeType
+    setTimeout(() => {
+      sendText(socket, {
+        method: 'Network.requestWillBeSent',
+        params: {
+          requestId: rid,
+          request: { url, method, headers, postData, postDataMimeType },
+          timestamp: Date.now() / 1000,
+          wallTime: Date.now() / 1000
+        },
+        sessionId: 'S1'
+      })
+    }, t)
+    if (item.fail) {
+      setTimeout(() => {
+        sendText(socket, {
+          method: 'Network.loadingFailed',
+          params: { requestId: rid, errorText: item.errorText ?? 'net::ERR_FAILED', timestamp: Date.now() / 1000 },
+          sessionId: 'S1'
+        })
+      }, t + 5)
+    } else {
+      const res = item.response ?? {}
+      setTimeout(() => {
+        sendText(socket, {
+          method: 'Network.responseReceived',
+          params: {
+            requestId: rid,
+            response: {
+              status: res.status ?? 200,
+              statusText: res.statusText ?? 'OK',
+              headers: res.headers ?? {},
+              mimeType: res.mimeType ?? 'text/html',
+              protocol: res.protocol ?? 'http/1.1'
+            },
+            timestamp: Date.now() / 1000
+          },
+          sessionId: 'S1'
+        })
+      }, t + 5)
+      setTimeout(() => {
+        sendText(socket, {
+          method: 'Network.loadingFinished',
+          params: { requestId: rid, encodedDataLength: res.size ?? 100, timestamp: Date.now() / 1000 },
+          sessionId: 'S1'
+        })
+      }, t + 10)
+    }
+    t += 20
+  }
 }

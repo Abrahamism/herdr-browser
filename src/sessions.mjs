@@ -38,7 +38,7 @@ export function sessionFile(paths, name) {
 }
 
 export function emptySession(name) {
-  return { session: sessionName(name), activeTargetId: null, tabs: [], updatedAt: null }
+  return { session: sessionName(name), activeTargetId: null, tabs: [], allowedOrigins: [], updatedAt: null }
 }
 
 export function readSession(paths, name) {
@@ -54,8 +54,12 @@ export function readSession(paths, name) {
             id: entry.id,
             title: entry.title ?? null,
             url: entry.url ?? null,
-            openedAt: entry.openedAt ?? null
+            openedAt: entry.openedAt ?? null,
+            lastUsedAt: entry.lastUsedAt ?? entry.openedAt ?? null
           }))
+      : [],
+    allowedOrigins: Array.isArray(data.allowedOrigins)
+      ? data.allowedOrigins.filter((entry) => typeof entry === 'string')
       : [],
     updatedAt: data.updatedAt ?? null
   }
@@ -95,15 +99,54 @@ export function hasTab(session, targetId) {
   return session.tabs.some((entry) => entry.id === targetId)
 }
 
+export function setAllowlist(session, patterns) {
+  const seen = new Set()
+  const out = []
+  for (const pattern of patterns ?? []) {
+    if (typeof pattern !== 'string') continue
+    if (seen.has(pattern)) continue
+    seen.add(pattern)
+    out.push(pattern)
+  }
+  return { ...session, allowedOrigins: out }
+}
+
 export function recordTab(session, targetId, meta = {}) {
+  const now = new Date().toISOString()
   const tabs = session.tabs.filter((entry) => entry.id !== targetId)
   tabs.push({
     id: targetId,
     title: meta.title ?? null,
     url: meta.url ?? null,
-    openedAt: new Date().toISOString()
+    openedAt: now,
+    lastUsedAt: now
   })
   return { ...session, tabs, activeTargetId: targetId }
+}
+
+export function touchTab(session, targetId) {
+  if (!session?.tabs?.some((entry) => entry.id === targetId)) return session
+  const now = new Date().toISOString()
+  const tabs = session.tabs.map((entry) =>
+    entry.id === targetId ? { ...entry, lastUsedAt: now } : entry
+  )
+  return { ...session, tabs }
+}
+
+export function idleTabs(session, tabs, { idleMs, now } = {}) {
+  const owned = new Set((session?.tabs ?? []).map((entry) => entry.id))
+  const tsOf = (id) => (session?.tabs ?? []).find((entry) => entry.id === id)?.lastUsedAt ?? null
+  const nowMs =
+    now instanceof Date ? now.getTime() : typeof now === 'string' ? Date.parse(now) : Number(now)
+  const threshold = Number.isFinite(nowMs) ? nowMs - Number(idleMs ?? 0) : null
+  return (tabs ?? []).filter((tab) => {
+    if (!tab || !owned.has(tab.id)) return false
+    const ts = tsOf(tab.id)
+    if (ts === null || ts === undefined) return true
+    const t = ts instanceof Date ? ts.getTime() : typeof ts === 'string' ? Date.parse(ts) : Number(ts)
+    if (!Number.isFinite(t)) return true
+    return threshold === null ? true : t <= threshold
+  })
 }
 
 export function forgetTab(session, targetId) {

@@ -1,9 +1,19 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { makeServer, runCli } from './fake-cdp.mjs'
+
+test('--version prints the package version instead of the help text', async () => {
+  const home = join(tmpdir(), 'hb-version-' + Date.now())
+  const result = await runCli(home, ['--version'])
+  const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.equal(result.status, 0)
+  assert.equal(result.stderr, '')
+  assert.equal(result.stdout.trim(), `herdr-browser ${version}`)
+  assert.equal(existsSync(home), false, '--version must not touch the profile home')
+})
 
 test('CLI against fake CDP server', async () => {
   const { server, state } = makeServer()
