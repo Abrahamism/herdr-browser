@@ -3,6 +3,29 @@
 Cambios de herdr-browser. La versión vive en `package.json` y se consulta con
 `herdr-browser --version`. Los comandos y sus límites están documentados en `README.md`.
 
+## Sin publicar
+
+### Corregido
+
+- **El perfil se olvidaba entre comandos.** `resolveSettings` caía en `config.profile` o en
+  `default`, pero `saveConfig` no tenía ni un llamador y `config.json` nunca se escribía: un
+  comando con `--profile cf-login` y el siguiente sin el flag terminaban en perfiles distintos.
+  El resultado era una ventana en blanco sobre un perfil vacío, con las cookies y extensiones
+  vivas en otra carpeta. Ahora el nombre pasado con `--profile` se persiste, y el comando avisa
+  cuando cambia el perfil recordado e indica cómo volver.
+- **`--profile` sin valor creaba un perfil llamado `true`.** El parser marcaba cualquier flag
+  sin valor como booleano; ahora los flags que llevan nombre, ruta o duración
+  (`--profile`, `--browser`, `--timeout`, `--page`, `--what`, `--for`, `--file`, `--from`,
+  `--idle`, `--message`, `--url`, `--exe`, `--allow-origin`) fallan con `--<flag> requires a value`.
+- **Un `state.json` de otro perfil se adoptaba por puerto.** La reutilización se decidía solo
+  por el puerto, sin comparar `state.userData` con el perfil pedido; Chromium recicla puertos, así
+  que un comando podía conectarse a la ventana de otro perfil y manejar sus pestañas. Ahora
+  `stateOwnsProfile` compara el `user-data` recordado (estados viejos sin ese campo siguen
+  reutilizándose) y `status`, `open` y el resto de comandos se niegan a adjuntarse.
+- **El README enseñaba a importar cookies en el perfil equivocado:** el ejemplo de
+  `profile import` omitía `--profile`, así que importaba en `default` mientras el flujo de login
+  del mismo documento usaba `--profile cf`.
+
 ## 1.2.2 (2026-11-07)
 
 ### Añadido

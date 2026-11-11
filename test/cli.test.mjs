@@ -24,7 +24,7 @@ test('CLI against fake CDP server', async () => {
   const profileDir = join(home, 'profiles', 'default')
   mkdirSync(profileDir, { recursive: true })
   const statePath = join(profileDir, 'state.json')
-  writeFileSync(statePath, JSON.stringify({ port, browser: 'brave', exe: 'fake', userData: join(tmp, 'user-data') }))
+  writeFileSync(statePath, JSON.stringify({ port, browser: 'brave', exe: 'fake', userData: join(profileDir, 'user-data') }))
 
   try {
     // tabs --json

@@ -1,9 +1,26 @@
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { ensureDir, readJson, writeJson } from './home.mjs'
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
+
+function normalizeDir(dir, plat) {
+  const absolute = resolve(dir)
+  return plat === 'win32' ? absolute.toLowerCase() : absolute
+}
+
+/**
+ * Whether a remembered state.json speaks for this profile. Chromium recycles ports, so two
+ * profiles can be remembered on the same one: adopting that state would attach the command
+ * to the other profile's window and its cookies.
+ */
+export function stateOwnsProfile(state, userData, plat = process.platform) {
+  if (!state?.port) return false
+  // States written before the root was recorded prove nothing; the port stays the only hint.
+  if (!state.userData) return true
+  return normalizeDir(state.userData, plat) === normalizeDir(userData, plat)
+}
 
 /**
  * Browser launch arguments. `port: 0` makes Chromium pick a free port and write it
@@ -142,12 +159,13 @@ export async function ensureBrowser({
   timeoutMs = 30_000,
   fetchImpl = fetch,
   spawnImpl = spawn,
-  log = () => {}
+  log = () => {},
+  plat = process.platform
 }) {
   ensureDir(userData)
   const state = readJson(statePath, null)
 
-  if (state?.port) {
+  if (stateOwnsProfile(state, userData, plat)) {
     const version = await probeVersion(state.port, { fetchImpl })
     if (version?.webSocketDebuggerUrl) {
       return {

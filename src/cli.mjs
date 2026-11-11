@@ -18,8 +18,8 @@ import { CDP } from './cdp.mjs'
 import { addExtension, extensionPaths, listExtensions, removeExtension } from './extensions.mjs'
 import { matchesOrigin, parseAllowlist } from './origins.mjs'
 import { buildHar, captureNetwork } from './har.mjs'
-import { ensureDir, loadConfig, profilePaths, readJson } from './home.mjs'
-import { ensureBrowser, launchPlain, probeVersion, waitForProfileRelease } from './launch.mjs'
+import { ensureDir, loadConfig, profilePaths, readJson, saveConfig } from './home.mjs'
+import { ensureBrowser, launchPlain, probeVersion, stateOwnsProfile, waitForProfileRelease } from './launch.mjs'
 import { importProfile, profileSummary } from './profile.mjs'
 import { renderExtensions, renderSnapshot, renderStatus, renderTabs } from './render.mjs'
 import {
@@ -56,6 +56,26 @@ const BOOLEAN_FLAGS = new Set([
   'panel'
 ])
 
+/**
+ * Flags that carry a name, a path or a duration. A bare `--profile` used to parse as the
+ * string "true" and quietly created a profile by that name, so a missing value is an error.
+ */
+const VALUE_FLAGS = new Set([
+  'allow-origin',
+  'browser',
+  'exe',
+  'file',
+  'for',
+  'from',
+  'idle',
+  'message',
+  'page',
+  'profile',
+  'timeout',
+  'url',
+  'what'
+])
+
 export function parseArgs(argv) {
   const flags = {}
   const positional = []
@@ -77,6 +97,7 @@ export function parseArgs(argv) {
     if (inline !== undefined) {
       flags[key] = inline
     } else if (BOOLEAN_FLAGS.has(key) || !argv[index + 1] || argv[index + 1].startsWith('--')) {
+      if (VALUE_FLAGS.has(key)) throw new Error(`--${key} requires a value`)
       flags[key] = true
     } else {
       flags[key] = argv[++index]
@@ -91,10 +112,15 @@ export function resolveSettings(flags, env = process.env, plat = process.platfor
   if (!BROWSER_NAMES.includes(browser)) {
     throw new Error(`unknown browser "${browser}" (expected one of ${BROWSER_NAMES.join(', ')})`)
   }
+  const profile = flags.profile ?? config.profile ?? 'default'
+  // A profile that only lives in one shell is a profile nobody finds again: remember the
+  // name the caller asked for, so the next command without --profile still lands there.
+  if (flags.profile && profile !== config.profile) saveConfig({ profile }, env, plat)
+
   return {
     config,
     browser,
-    profile: flags.profile ?? config.profile ?? 'default',
+    profile,
     session: resolveSession(flags, env),
     exe: flags.exe ?? config.exe ?? null,
     cursor: flags['no-cursor'] ? false : config.cursor !== false,
@@ -116,7 +142,9 @@ function pathsFor(settings) {
 async function connectExisting(settings) {
   const paths = pathsFor(settings)
   const state = readJson(paths.state, null)
-  if (!state?.port) return null
+  // A live port is not proof on its own: the state has to belong to this profile, or the
+  // command would drive a window whose cookies and extensions are somebody else's.
+  if (!stateOwnsProfile(state, paths.userData, settings.plat)) return null
   const version = await probeVersion(state.port)
   if (!version?.webSocketDebuggerUrl) return null
   const cdp = await CDP.connect(state.port)
@@ -278,6 +306,10 @@ Extensions and profile:
   herdr-browser extensions [list|add <dir>|remove <dir>]
   herdr-browser profile [path]
   herdr-browser profile import [--from brave|chrome|edge|chromium] [--force]
+
+  A --profile name is remembered: the next command without one uses the profile you last
+  asked for, so a session is not stranded in a default that holds none of your cookies.
+  A --profile without a name is an error; it used to become a profile called "true".
   herdr-browser login <url> [--profile name] [--timeout <ms|s|m>]
 
 Login (portals that refuse an automated launch):
@@ -300,7 +332,7 @@ Session:
 
 Global flags:
   --browser <name>   engine to launch (default: brave)
-  --profile <name>   dedicated profile (default: default)
+  --profile <name>   dedicated profile (default: the remembered one, else "default")
   --session <name>   client identity for tab ownership (default: default)
   --page <id>        address a tab explicitly, even one another session opened
   --exe <path>       explicit browser executable
@@ -313,7 +345,15 @@ Global flags:
 
 export async function main(argv, { stdout = process.stdout, stderr = process.stderr } = {}) {
   const write = (text) => stdout.write(`${text}\n`)
-  const { flags, positional } = parseArgs(argv)
+  let flags
+  let positional
+  try {
+    ;({ flags, positional } = parseArgs(argv))
+  } catch (error) {
+    // A malformed flag is a usage error like any other: one line, exit 1, no stack trace.
+    stderr.write(`herdr-browser: ${error.message}\n`)
+    return 1
+  }
   const command = positional.shift()
 
   // --version wins over the help text: without this order it never printed a version.
@@ -329,6 +369,12 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
   const settings = resolveSettings(flags)
   flags.__cursor = settings.cursor
   flags.__session = settings.session
+  if (flags.profile && settings.config.profile !== settings.profile) {
+    // Say it out loud: the choice outlives this command.
+    write(
+      `profile: ${settings.profile} remembered (was ${settings.config.profile}); pass --profile ${settings.config.profile} to go back`
+    )
+  }
 
   try {
     switch (command) {
@@ -545,7 +591,9 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
       case 'status': {
         const paths = pathsFor(settings)
         const state = readJson(paths.state, null)
-        if (!state) {
+        // A state left by another profile describes a browser this profile does not own;
+        // reporting it as running is how a caller ends up driving the wrong window.
+        if (!stateOwnsProfile(state, paths.userData, settings.plat)) {
           write(flags.json ? JSON.stringify({ running: false }) : 'browser: not running')
           return 0
         }

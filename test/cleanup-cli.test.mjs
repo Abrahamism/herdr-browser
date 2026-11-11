@@ -14,7 +14,7 @@ async function setup({ targets } = {}) {
   const sessionDir = join(profileDir, 'sessions')
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = server.address().port
-  writeFileSync(statePath, JSON.stringify({ port, browser: 'brave', exe: 'fake', userData: join(home, 'user-data') }))
+  writeFileSync(statePath, JSON.stringify({ port, browser: 'brave', exe: 'fake', userData: join(profileDir, 'user-data') }))
   return {
     server,
     state,

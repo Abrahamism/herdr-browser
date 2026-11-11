@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { launchArgs, parseDevToolsActivePort } from '../src/launch.mjs'
+import { join } from 'node:path'
+import { launchArgs, parseDevToolsActivePort, stateOwnsProfile } from '../src/launch.mjs'
 
 test('launchArgs contains required flags', () => {
   const args = launchArgs({ userDataDir: '/tmp/ud', port: 0, extensions: [], headless: true })
@@ -16,6 +17,18 @@ test('launchArgs load-extension only when extensions exist', () => {
   const ext = args.find((a) => a.startsWith('--load-extension='))
   assert.ok(ext)
   assert.equal(ext, '--load-extension=/ext/a')
+})
+
+test('a remembered state only speaks for its own profile', () => {
+  const userData = join('C:', 'hb', 'profiles', 'default', 'user-data')
+  assert.equal(stateOwnsProfile({ port: 1, userData }, userData, 'win32'), true)
+  assert.equal(stateOwnsProfile({ port: 1, userData: userData.toUpperCase() }, userData, 'win32'), true)
+  const other = join('C:', 'hb', 'profiles', 'cf-login', 'user-data')
+  assert.equal(stateOwnsProfile({ port: 1, userData: other }, userData, 'win32'), false)
+  // Written before the state recorded its root: nothing contradicts the caller, keep reusing.
+  assert.equal(stateOwnsProfile({ port: 1 }, userData, 'win32'), true)
+  assert.equal(stateOwnsProfile({}, userData, 'win32'), false)
+  assert.equal(stateOwnsProfile(null, userData, 'win32'), false)
 })
 
 test('parseDevToolsActivePort valid', () => {

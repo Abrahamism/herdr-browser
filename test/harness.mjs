@@ -17,7 +17,7 @@ export async function withFakeCdp(fn, { targets } = {}) {
   mkdirSync(profileDir, { recursive: true })
   writeFileSync(
     join(profileDir, 'state.json'),
-    JSON.stringify({ port, browser: 'brave', exe: 'fake', userData: join(tmp, 'user-data') })
+    JSON.stringify({ port, browser: 'brave', exe: 'fake', userData: join(profileDir, 'user-data') })
   )
   try {
     return await fn({ home, state, port })

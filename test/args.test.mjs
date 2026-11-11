@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseArgs, resolveSettings } from '../src/cli.mjs'
@@ -41,6 +41,25 @@ test('parseArgs positionals', () => {
   const { flags, positional } = parseArgs(['open', 'https://x', '--new'])
   assert.equal(flags.new, true)
   assert.deepEqual(positional, ['open', 'https://x'])
+})
+
+test('parseArgs refuses a value flag that has no value', () => {
+  // A bare --profile used to become the string "true", which created a profile by that name.
+  assert.throws(() => parseArgs(['open', 'https://x', '--profile']), /--profile requires a value/)
+  assert.throws(() => parseArgs(['--profile', '--json']), /--profile requires a value/)
+})
+
+test('a profile passed once is remembered by the next command', () => {
+  const home = mkdtempSync(join(tmpdir(), 'hb-'))
+  const env = { HERDR_BROWSER_HOME: home }
+  try {
+    assert.equal(resolveSettings({}, env, 'win32').profile, 'default')
+    assert.equal(resolveSettings({ profile: 'cf-login' }, env, 'win32').profile, 'cf-login')
+    assert.equal(resolveSettings({}, env, 'win32').profile, 'cf-login')
+    assert.equal(JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')).profile, 'cf-login')
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
 })
 
 test('resolveSettings rejects unknown browser', () => {

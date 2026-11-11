@@ -186,13 +186,32 @@ No se soporta la instalación desde la Web Store (CRX3 + verificación de firma)
 
 ## Perfil
 
-Perfil aislado propio. Para importar cookies y extensiones desde el perfil real de Brave:
+Perfil aislado propio. Se elige con `--profile <name>` y **el nombre queda recordado**: el
+siguiente comando sin `--profile` usa el último que pediste. Sin ese recuerdo, un solo comando
+con otro nombre abría un perfil vacío y el anterior parecía perdido, con sus cookies y
+extensiones intactas en otra carpeta.
 
 ```bash
-herdr-browser profile import --from brave
+herdr-browser profile path            # qué perfil está activo ahora
+herdr-browser --profile cf-login open https://dash.cloudflare.com
+herdr-browser profile path            # cf-login, recordado
+herdr-browser --profile default open   # volver al anterior
 ```
 
-Copia `Local State`, cookies, datos de login y directorios de extensiones. Riesgo: copia credenciales a un segundo perfil; es una decisión explícita del usuario.
+Un `--profile` sin nombre es un error: antes se interpretaba como el perfil literal `true`.
+
+Para importar cookies y extensiones desde el perfil real de Brave **al perfil que vas a usar**
+(el import escribe en el perfil que resuelve `--profile`):
+
+```bash
+herdr-browser profile import --from brave --profile default
+```
+
+Copia `Local State`, cookies, datos de login y directorios de extensiones. Riesgo: copia
+credenciales a un segundo perfil; es una decisión explícita del usuario.
+
+El estado guardado (`state.json`) solo se reutiliza si pertenece al perfil pedido: dos perfiles
+pueden caer en el mismo puerto reciclado, y adoptar ese estado manejaría la ventana del otro.
 
 ### Iniciar sesión en portales que rechazan la automatización
 
@@ -205,8 +224,9 @@ La salida es establecer la sesión sin depurador y después automatizarla:
 
 ```bash
 herdr-browser login https://dash.cloudflare.com --profile cf
-# se abre el navegador SIN puerto de depuración: iniciá sesión y cerrá la ventana
-herdr-browser --profile cf open https://dash.cloudflare.com
+# se abre el navegador SIN puerto de depuración: inicia sesión y cierra la ventana
+herdr-browser open https://dash.cloudflare.com   # cf queda recordado
+# si además querés tus extensiones ahí: profile import --from brave --profile cf
 ```
 
 Un perfil recién creado **no tiene nada tuyo**: ni cookies, ni historial, ni extensiones (por
