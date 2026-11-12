@@ -3,7 +3,7 @@
 Cambios de herdr-browser. La versión vive en `package.json` y se consulta con
 `herdr-browser --version`. Los comandos y sus límites están documentados en `README.md`.
 
-## Sin publicar
+## 1.2.3 (2026-11-11)
 
 ### Corregido
 
